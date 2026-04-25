@@ -1,0 +1,17 @@
+services:
+  ros2-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: capstone-project:humble
+    container_name: capstone-project-dev
+    stdin_open: true
+    tty: true
+    network_mode: host
+    working_dir: /workspace
+    environment:
+      DISPLAY: ${DISPLAY}
+      QT_X11_NO_MITSHM: "1"
+    volumes:
+      - ./:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
