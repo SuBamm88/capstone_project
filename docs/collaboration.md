@@ -1,283 +1,223 @@
 # Collaboration Guide
 
-## 현재 저장소 상태
+## 이 문서의 목적
 
-## Current Repository Status
+이 문서는 `capstone-project`를 여러 명이 함께 작업할 때, 처음 세팅부터 실제 작업 반영까지 어떤 순서로 진행하면 되는지 간단히 정리한 문서입니다.
 
-- 로컬 저장소 경로: `~/capstone-project`
-- 연결된 GitHub 저장소: `git@github.com:SuBamm88/capstone_project.git`
-- 기본 브랜치: `main`
-- 현재 로컬 추적 브랜치: `main -> origin/main`
+복잡한 Git 이론을 모두 설명하는 문서가 아니라, 지금 팀이 바로 따라 할 수 있는 최소한의 협업 기준을 정리하는 것이 목적입니다.
 
-- Local repository path: `~/capstone-project`
-- Connected GitHub repository: `git@github.com:SuBamm88/capstone_project.git`
-- Default branch: `main`
-- Current local branch tracking: `main -> origin/main`
+## 참고 자료
 
-## 지금 가장 먼저 할 일: 팀원 초대
+아래 영상도 같이 참고하면 이해에 도움이 됩니다.
 
-## First Thing To Do Now: Invite Teammates
+- YouTube: https://www.youtube.com/watch?v=nCKdihvneS0
 
-팀 전체가 하나의 SSH key를 공유하면 안 됩니다. 각 팀원은 자신의 GitHub 계정과 자신의 SSH key를 사용해야 합니다.
+## 지금 저장소에서 중요한 것
 
-Do not share one SSH key across the team. Each teammate should use their own GitHub account and their own SSH key.
+### 1. `main` 브랜치
 
-GitHub에서 아래 경로로 이동하세요.
+`main`은 팀의 기준 브랜치입니다.  
+최종적으로 정리된 작업, 다른 팀원도 바로 받아서 써도 되는 작업을 모아두는 기본 브랜치라고 생각하면 됩니다.
 
-Open GitHub and go to:
+그래서 보통은 아무 변경이나 바로 `main`에 넣지 않고, 확인 과정을 거친 뒤 반영하는 식으로 운영합니다.
+
+### 2. `colcon-build`
+
+`colcon-build`는 ROS 2 워크스페이스가 실제로 빌드되는지 확인하는 자동 검사입니다.
+
+이 검사를 두는 이유는 단순합니다.
+
+- 누군가의 수정이 전체 ROS 2 환경을 깨뜨리지 않았는지 확인하기 위해
+- 코드가 올라간 뒤 다른 팀원이 바로 작업을 이어갈 수 있게 하기 위해
+- 문법은 맞아도 실제 빌드가 실패하는 상황을 미리 막기 위해
+
+즉, `colcon-build`는 "이 변경을 넣어도 최소한 빌드는 된다"를 확인하는 안전장치입니다.
+
+## 저장소 설정은 누가 하나
+
+모든 팀원이 같은 설정을 반복해서 하는 것은 아닙니다.
+
+### 관리자 또는 저장소 소유자가 하는 것
+
+- GitHub 저장소 생성 및 관리
+- 팀원 초대
+- `main` 브랜치 보호 규칙 설정
+- GitHub Actions와 같은 자동 검사 설정
+- 필요한 경우 PR 승인 규칙 설정
+
+즉, 저장소 전체 규칙은 보통 관리자 1명이 설정합니다.
+
+### 각 팀원이 각자 해야 하는 것
+
+- 자신의 GitHub 계정 준비
+- 자신의 SSH key 등록
+- 저장소 clone
+- 정해진 브랜치 이름과 작업 방식에 맞춰 작업
+- commit, push, PR 생성
+
+즉, 저장소 규칙은 공통이지만, 로컬 개발 환경과 인증은 각 팀원이 직접 준비해야 합니다.
+
+## 왜 SSH key를 등록해야 하나
+
+GitHub는 누가 저장소에 접근하는지 확인해야 합니다.  
+SSH key는 "이 컴퓨터와 이 사용자가 실제로 허용된 사람인지" 확인하는 인증 수단입니다.
+
+SSH key를 등록하는 이유는 다음과 같습니다.
+
+- 비밀번호를 매번 입력하지 않고 안전하게 GitHub에 접근하기 위해
+- 누가 push했는지 GitHub가 계정 기준으로 구분할 수 있게 하기 위해
+- 팀원마다 각자 권한을 관리할 수 있게 하기 위해
+- 한 사람의 키를 여러 명이 공유하는 위험한 방식을 피하기 위해
+
+중요한 점은, 팀원마다 자신의 GitHub 계정과 자신의 SSH key를 써야 한다는 것입니다.  
+한 명의 키를 복사해서 같이 쓰면 안 됩니다.
+
+## 왜 팀원을 초대해야 하나
+
+GitHub 저장소는 권한이 있어야 push할 수 있습니다.  
+팀원을 Collaborator로 초대해야 각자 자신의 계정으로 저장소에 접근하고 push할 수 있습니다.
+
+이렇게 해야:
+
+- 누가 어떤 작업을 했는지 기록이 남고
+- 권한을 개별적으로 관리할 수 있으며
+- 나중에 특정 팀원의 접근만 따로 추가하거나 제거할 수 있습니다
+
+## PR이 뭐야
+
+PR은 Pull Request입니다.
+
+쉽게 말하면:
+
+"내가 작업한 브랜치를 `main`에 반영해도 되는지 검토해달라고 요청하는 것"
+
+입니다.
+
+PR을 쓰는 이유는 다음과 같습니다.
+
+- 바로 `main`에 넣지 않고 한 번 더 확인할 수 있기 때문에
+- 다른 팀원이 변경 내용을 리뷰할 수 있기 때문에
+- 자동 검사 결과를 보고 문제를 먼저 잡을 수 있기 때문에
+
+초기 세팅 단계에서는 PR 규칙을 잠시 느슨하게 둘 수 있지만, 팀 협업이 본격적으로 시작되면 PR 기반으로 작업하는 것이 안전합니다.
+
+## 이후에 해야 하는 것
+
+초기 세팅이 끝난 뒤에는 아래 순서로 정리하는 것을 권장합니다.
+
+### 1. 팀원 초대
+
+이유:
+
+- 각 팀원이 자기 계정으로 push할 수 있어야 하기 때문
+- 누가 어떤 작업을 했는지 기록을 남기기 위해
+- SSH key를 각자 따로 관리해야 하기 때문
+
+GitHub 경로:
 
 `Repository -> Settings -> Collaborators -> Add people`
 
-권장 절차는 다음과 같습니다.
+### 2. 각 팀원 SSH 연결 확인
 
-Recommended approach:
+이유:
 
-1. 각 팀원을 GitHub username으로 초대합니다.
-2. 각 팀원이 이메일 또는 GitHub에서 초대를 수락합니다.
-3. 초대 수락 후 각자 자신의 SSH 설정으로 저장소를 clone합니다.
+- GitHub에 실제로 push 가능한지 먼저 확인해야 하기 때문
+- 나중에 작업하다가 인증 문제로 시간을 쓰지 않기 위해
 
-1. Add each teammate by their GitHub username.
-2. Ask them to accept the invitation by email or on GitHub.
-3. After acceptance, each teammate clones with their own SSH setup.
-
-## SSH 연결 확인
-
-## SSH Connection Check
-
-각 팀원은 아래 명령으로 SSH 연결을 확인해야 합니다.
-
-Each teammate should run the following command to verify SSH access:
+확인 명령:
 
 ```bash
 ssh -T git@github.com
 ```
 
-정상 결과는 다음과 같습니다.
+### 3. 작업 규칙 공유
 
-Expected result:
+이유:
 
-- GitHub에서 인증 성공과 유사한 메시지가 표시됩니다.
-- shell access is not provided 같은 문구가 보여도 정상입니다.
+- 브랜치 이름, push 방식, PR 기준이 제각각이면 협업이 금방 꼬이기 때문
+- 특히 `docker/`, 루트 스크립트, CI 관련 파일은 모두에게 영향을 주기 때문
 
-- GitHub shows a message similar to successful authentication.
-- The shell may say shell access is not provided. That is normal.
+최소 규칙 예시:
 
-아직 SSH key가 없는 팀원은 아래처럼 생성합니다.
+1. `main`은 기준 브랜치로 사용
+2. 각자 작업 브랜치에서 수정
+3. commit 메시지는 변경 내용을 알아볼 수 있게 작성
+4. 공용 설정 파일 수정 시 더 신중하게 확인
 
-If a teammate does not have an SSH key yet, generate one with:
+### 4. 브랜치 보호 규칙 다시 켜기
 
-```bash
-ssh-keygen -t ed25519 -C "their_email@example.com"
-cat ~/.ssh/id_ed25519.pub
-```
+이유:
 
-출력된 공개 키는 아래 경로에 등록합니다.
+- 초기 세팅 때는 빠르게 작업하기 위해 규칙을 완화할 수 있지만
+- 협업이 시작되면 실수로 `main`을 깨뜨릴 가능성이 커지기 때문
 
-Add the printed public key here:
+권장 최소 설정:
 
-`GitHub -> Settings -> SSH and GPG keys -> New SSH key`
+- 필요 시 `main` 직접 push 제한
+- 필요 시 PR 기반 반영
+- 가능하면 `colcon-build` 통과 후 반영
 
-## Remote origin 예시
+## 가장 단순한 작업 흐름
 
-## Remote Origin Example
+초보자 기준으로는 아래 흐름만 기억해도 충분합니다.
 
-현재 remote 주소는 아래 명령으로 확인할 수 있습니다.
-
-Check the current remote with:
-
-```bash
-git remote -v
-```
-
-이 저장소에서 기대되는 origin은 아래와 같습니다.
-
-Expected origin for this repository:
-
-```bash
-origin  git@github.com:SuBamm88/capstone_project.git (fetch)
-origin  git@github.com:SuBamm88/capstone_project.git (push)
-```
-
-누군가 HTTPS로 clone했다면 SSH로 아래처럼 변경할 수 있습니다.
-
-If someone cloned with HTTPS, switch to SSH with:
-
-```bash
-git remote set-url origin git@github.com:SuBamm88/capstone_project.git
-```
-
-## 브랜치 보호가 의미하는 것
-
-## What Branch Protection Means
-
-`main` 브랜치를 보호한다는 것은 GitHub가 `main`을 안정 브랜치로 취급하도록 설정하는 것입니다.
-
-Protecting `main` means GitHub treats `main` as the stable branch.
-
-- `main`에 대한 직접 push를 막을 수 있습니다.
-- 코드는 pull request를 통해서만 `main`에 들어가게 할 수 있습니다.
-- merge 전에 최소 1명 이상의 리뷰를 강제할 수 있습니다.
-- merge 전에 CI 통과를 강제할 수 있습니다.
-
-- Direct pushes to `main` are blocked.
-- Code reaches `main` through pull requests.
-- You can require at least one review before merge.
-- You can require the CI build to pass before merge.
-
-이 설정은 한 사람이 실수로 공용 환경을 깨뜨리는 일을 줄여줍니다.
-
-This prevents one person from accidentally breaking the shared environment.
-
-## 권장 작업 흐름
-
-## Recommended Workflow
-
-1. 저장소를 clone합니다.
-2. `main`에서 새 브랜치를 만듭니다.
-3. 자신의 작업 범위만 수정합니다.
-4. 작업 브랜치를 push합니다.
-5. `main` 대상으로 pull request를 엽니다.
-6. 리뷰와 CI 통과 후 merge합니다.
-
-1. Clone the repository.
-2. Create a branch from `main`.
-3. Modify only the files for your task.
-4. Push your branch.
-5. Open a pull request into `main`.
-6. Merge after review and CI pass.
-
-예시는 아래와 같습니다.
-
-Example:
+### 1. 최신 내용 받기
 
 ```bash
 git checkout main
 git pull origin main
-git checkout -b feat/localization
-git add .
-git commit -m "Add localization node"
-git push origin feat/localization
 ```
 
-## 브랜치 보호 설정 클릭 경로
+이유:
 
-## Branch Protection Click Path
+- 다른 사람이 먼저 반영한 최신 내용을 기준으로 작업해야 충돌이 줄어듭니다.
 
-GitHub 저장소에서 아래 경로로 이동합니다.
-
-Open the repository on GitHub and go to:
-
-`Settings -> Branches -> Add branch protection rule`
-
-`main`에 대한 권장 설정은 아래와 같습니다.
-
-Recommended rule for `main`:
-
-- Branch name pattern: `main`
-- `Require a pull request before merging` 활성화
-- `Require approvals` 활성화 후 `1`로 설정
-- `Require status checks to pass before merging` 활성화
-- `colcon-build` 워크플로 선택
-- 필요 시 `Restrict who can push to matching branches` 활성화
-
-- Branch name pattern: `main`
-- Enable `Require a pull request before merging`
-- Enable `Require approvals` and set it to `1`
-- Enable `Require status checks to pass before merging`
-- Select the `colcon-build` workflow
-- Enable `Restrict who can push to matching branches` if needed
-
-만약 GitHub가 예전 branch protection UI 대신 rulesets UI를 보여주면 아래 경로를 사용합니다.
-
-If GitHub shows the newer rulesets UI instead of the old branch protection UI, use:
-
-`Settings -> Rules -> Rulesets -> New ruleset -> Branch ruleset`
-
-권장 값은 다음과 같습니다.
-
-Recommended values:
-
-1. Ruleset name: `Protect main`
-2. Enforcement status: `Active`
-3. Target branches: `Include default branch` 또는 `main` 직접 지정
-4. Pull request requirement 활성화
-5. Approval 수를 `1`로 설정
-6. Status checks를 활성화하고 build workflow 선택
-7. `main` 직접 push 차단
-
-1. Ruleset name: `Protect main`
-2. Enforcement status: `Active`
-3. Target branches: `Include default branch` or explicitly `main`
-4. Enable pull request requirement
-5. Require `1` approval
-6. Require status checks and choose the build workflow
-7. Block direct pushes to `main`
-
-## 역할 분담 제안
-
-## Role Split Suggestion
-
-- `src/perception_pkg`: perception 담당
-- `src/planning_pkg`: planning 담당
-- `src/control_pkg`: control 담당
-- `docker/`와 CI: 공용 환경 담당 maintainer 1명 이상
-
-- `src/perception_pkg`: perception owner
-- `src/planning_pkg`: planning owner
-- `src/control_pkg`: control owner
-- `docker/` and CI: one maintainer reviews shared environment changes
-
-`docker/`, workflow 파일, 루트 스크립트는 모두에게 영향을 주므로 특히 신중하게 리뷰해야 합니다.
-
-Changes to `docker/`, workflow files, and root-level scripts should be reviewed carefully because they affect everyone.
-
-## 팀 규칙 템플릿
-
-## Team Rules Template
-
-아래 규칙을 기본 협업 규칙으로 사용하는 것을 권장합니다.
-
-Use this as the baseline team agreement:
-
-1. `main` 브랜치에 직접 push하지 않습니다.
-2. 하나의 작업은 하나의 브랜치에서 진행합니다.
-3. 브랜치 이름은 `feat/...`, `fix/...`, `docs/...`, `chore/...` 형식을 사용합니다.
-4. 작은 변경이라도 반드시 pull request를 엽니다.
-5. 최소 1명의 팀원 리뷰 후 merge합니다.
-6. CI가 실패한 상태에서는 merge하지 않습니다.
-7. `docker/`, `.github/workflows/`, 루트 스크립트 변경은 더 신중하게 리뷰합니다.
-8. 새 작업 시작 전 `main`을 pull합니다.
-9. 생성 파일과 로컬 빌드 산출물은 Git에 올리지 않습니다.
-10. commit message는 실제 변경 내용을 설명하도록 작성합니다.
-
-1. Never push directly to `main`.
-2. One task, one branch.
-3. Branch names follow `feat/...`, `fix/...`, `docs/...`, or `chore/...`.
-4. Open a pull request for every change, even small ones.
-5. At least one teammate reviews before merge.
-6. Do not merge while CI is failing.
-7. Shared files such as `docker/`, `.github/workflows/`, and root scripts need extra review.
-8. Pull `main` before starting new work.
-9. Keep generated files and local build outputs out of Git.
-10. Write commit messages that explain the actual change.
-
-권장 브랜치 이름 예시는 아래와 같습니다.
-
-Suggested branch examples:
-
-- `feat/planning-node`
-- `fix/docker-permission`
-- `docs/setup-guide`
-
-하루 작업 흐름 예시는 아래와 같습니다.
-
-Suggested daily flow:
+### 2. 작업 브랜치 만들기
 
 ```bash
-git checkout main
-git pull origin main
-git checkout -b feat/your-task
-git add .
-git commit -m "Implement your task"
-git push origin feat/your-task
+git checkout -b docs/update-guide
 ```
+
+이유:
+
+- `main`과 작업 내용을 분리해서 관리하기 위해
+- 나중에 무엇을 수정했는지 보기 쉽게 하기 위해
+
+### 3. 파일 수정
+
+예:
+
+- `README.md`
+- `docs/collaboration.md`
+
+### 4. 변경 사항 기록
+
+```bash
+git add README.md docs/collaboration.md
+git commit -m "Update collaboration guide"
+```
+
+이유:
+
+- `git add`는 커밋할 파일을 고르는 단계
+- `git commit`은 지금까지의 변경을 내 노트북에 기록하는 단계
+- `-m` 뒤 문장은 파일명이 아니라 변경 내용 설명입니다
+
+### 5. GitHub로 올리기
+
+```bash
+git push origin docs/update-guide
+```
+
+이유:
+
+- 내 컴퓨터에만 있는 작업을 GitHub에 올려야 다른 팀원도 볼 수 있기 때문
+- 이후 PR이나 리뷰를 진행할 수 있기 때문
+
+## 한 줄 정리
+
+- `main`은 팀 기준 브랜치입니다.
+- `colcon-build`는 ROS 2 빌드가 깨지지 않았는지 확인하는 자동 검사입니다.
+- 저장소 규칙은 보통 관리자가 설정합니다.
+- SSH key와 로컬 환경은 각 팀원이 각자 준비합니다.
+- PR은 "`main`에 반영해도 되는지 확인받는 요청"입니다.
