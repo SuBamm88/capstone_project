@@ -91,13 +91,6 @@ git clone git@github.com:SuBamm88/capstone_project.git
 cd capstone_project
 ```
 
-현재 위치와 파일 목록을 확인합니다.
-
-```bash
-pwd
-ls
-```
-
 ### 4. VS Code에서 프로젝트 열기
 
 현재 디렉토리를 VS Code로 엽니다.
@@ -106,9 +99,9 @@ ls
 code .
 ```
 
-이후 VS Code 터미널에서 아래 명령어를 실행합니다.
+이후 VS Code에서 터미널을 열고 아래 작업을 진행합니다.
 
-### 5. main 브랜치 최신 상태로 맞추기
+### 5. main 최신화 후 작업 브랜치 만들기
 
 작업을 시작하기 전에 항상 `main` 브랜치로 이동합니다.
 
@@ -122,30 +115,9 @@ git switch main
 git pull origin main
 ```
 
-pull을 받은 뒤에는 다른 팀원이 새 의존성을 추가했는지 확인합니다.
+pull을 받은 뒤에는 다른 팀원이 새 의존성을 추가했는지 가볍게 확인합니다. `package.xml`, `setup.py`, `requirements.txt` 등이 바뀌었다면 이전 작업자의 README, PR 설명, 커밋 메시지를 참고해서 로컬 환경에도 반영합니다.
 
-```bash
-git log --oneline -5
-git status
-```
-
-최근 커밋 메시지나 변경된 파일을 보고 `package.xml`, `setup.py`, `requirements.txt` 같은 의존성 관련 파일이 바뀌었는지 확인합니다.
-
-```bash
-git diff --name-only HEAD~1 HEAD
-```
-
-의존성이 추가된 것 같다면 `colcon build` 전에 먼저 로컬 환경에 반영합니다. 보통은 팀원이 README, PR 본문, 커밋 메시지, 코드 주석 등에 적어둔 설치 방법을 확인하고 그대로 따라 하면 됩니다.
-
-ROS 패키지 의존성은 아래 명령어로 확인하고 설치합니다.
-
-```bash
-rosdep install --rosdistro humble --from-paths src --ignore-src -r -y
-```
-
-그 외 `pip install`, `apt install` 같은 추가 작업이 필요해 보이면 다른 작업자가 남긴 설명을 먼저 확인합니다. 설명이 부족하거나 에러 메시지가 이해되지 않으면 AI에게 `package.xml`, `setup.py`, 에러 메시지를 함께 보여주고 어떤 의존성을 설치해야 하는지 도움을 받아도 됩니다.
-
-### 6. 작업 브랜치 만들기
+의존성 설치는 보통 세 종류가 있습니다. `rosdep`은 ROS 패키지 의존성을 맞출 때, `pip`는 Python 패키지를 설치할 때, `apt`는 Ubuntu 시스템 패키지를 설치할 때 사용합니다. 어떤 것을 써야 할지 애매하면 변경된 파일과 에러 메시지를 함께 보고 AI의 도움을 받아도 됩니다.
 
 `main`에서 직접 작업하지 않고, 내 작업용 브랜치를 새로 만듭니다.
 
@@ -161,21 +133,11 @@ git branch
 
 현재 브랜치 이름 앞에 `*` 표시가 있으면 그 브랜치에서 작업 중이라는 뜻입니다.
 
-### 7. 테스트 파일 생성
+### 6. 파일 수정 또는 추가
 
-Git 연결 확인용 파일을 하나 만듭니다.
+VS Code에서 파일을 수정하거나 새 파일을 추가합니다.
 
-```bash
-touch src/seunghyun_git_test.txt
-```
-
-파일이 생겼는지 확인합니다.
-
-```bash
-ls src
-```
-
-### 8. 변경 사항 확인
+Git 연결 확인 연습이라면 `src/seunghyun_git_test.txt`처럼 본인 이름이 들어간 테스트 파일을 하나 만들어도 됩니다.
 
 Git이 어떤 파일 변경을 감지했는지 확인합니다.
 
@@ -185,25 +147,11 @@ git status
 
 새로 만든 파일이 `Untracked files`에 보이면 아직 Git에 추가되지 않은 상태입니다.
 
-### 9. colcon build 확인
+### 7. colcon build 확인
 
-push 하기 전에 프로젝트가 정상적으로 빌드되는지 확인합니다.
+push 하기 전에는 반드시 프로젝트가 정상적으로 빌드되는지 확인합니다.
 
-ROS 2 Humble 명령어를 사용할 수 있도록 현재 터미널에 ROS 환경을 불러옵니다.
-
-```bash
-source /opt/ros/humble/setup.bash
-```
-
-새 패키지를 추가했거나 의존성을 수정했다면 `colcon build` 전에 아래 명령어로 의존성을 먼저 확인합니다.
-
-```bash
-rosdep install --rosdistro humble --from-paths src --ignore-src -r -y
-```
-
-pull 이후 새 의존성이 들어온 경우에도 위 명령어와 팀원이 남긴 설치 안내를 먼저 적용한 다음 빌드합니다.
-
-프로젝트를 빌드해서 코드와 패키지 설정에 문제가 없는지 확인합니다.
+Terminator에서 프로젝트 디렉토리로 이동한 뒤 아래 명령어를 실행합니다.
 
 ```bash
 colcon build
@@ -217,23 +165,15 @@ colcon build
 source install/setup.bash
 ```
 
-`colcon build`는 최소한 push 전에 반드시 실행해야 합니다. 패키지 구조를 바꾸거나 `package.xml`, `setup.py`, launch 파일, 노드 코드를 수정한 경우에도 바로 실행해서 문제가 없는지 확인합니다.
+`colcon build`는 push 전에 필수로 확인합니다. 패키지 구조, `package.xml`, `setup.py`, launch 파일, 노드 코드를 수정했다면 특히 빌드 성공 여부를 꼭 확인해야 합니다.
 
-### 10. 파일을 commit
+### 8. commit
 
-변경한 파일을 Git이 관리하도록 추가합니다.
+VS Code의 Source Control 탭에서 변경된 파일을 확인하고 commit합니다.
 
-```bash
-git add src/seunghyun_git_test.txt
-```
+commit은 현재 변경 내용을 하나의 기록으로 남기는 작업입니다. 메시지는 `test: verify git connection`처럼 무엇을 했는지 짧게 적습니다.
 
-커밋을 만들어 변경 내용을 기록합니다.
-
-```bash
-git commit -m "test: verify git connection"
-```
-
-### 11. GitHub에 push
+### 9. GitHub에 push
 
 내 작업 브랜치를 GitHub에 올립니다.
 
@@ -243,7 +183,9 @@ git push origin test/seunghyun
 
 GitHub 저장소 페이지에서 `test/seunghyun` 브랜치가 보이면 push가 성공한 것입니다.
 
-### 12. Pull Request 작성
+※ push는 VS Code Source Control의 `Sync Changes` 또는 `Push` 버튼으로 해도 됩니다. 터미널 명령어가 익숙하지 않다면 VS Code 도구를 활용해도 괜찮습니다.
+
+### 10. Pull Request 작성
 
 GitHub 저장소 페이지로 이동합니다.
 
