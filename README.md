@@ -155,6 +155,13 @@ Terminator에서 프로젝트 디렉토리로 이동한 뒤 아래 명령어를 
 
 ```bash
 colcon build
+```
+
+`Summary`에 실패한 패키지가 없으면 빌드가 성공한 것입니다.
+
+빌드 후 현재 터미널에서 새로 빌드된 환경을 사용하려면 아래 명령어를 실행합니다.
+
+```bash
 source install/setup.bash
 ```
 
@@ -176,7 +183,7 @@ git push origin test/seunghyun
 
 GitHub 저장소 페이지에서 `test/seunghyun` 브랜치가 보이면 push가 성공한 것입니다.
 
-push는 VS Code Source Control의 `Sync Changes` 또는 `Push` 버튼으로 해도 됩니다. 터미널 명령어가 익숙하지 않다면 VS Code 도구를 활용해도 괜찮습니다.
+※ push는 VS Code Source Control의 `Sync Changes` 또는 `Push` 버튼으로 해도 됩니다. 터미널 명령어가 익숙하지 않다면 VS Code 도구를 활용해도 괜찮습니다.
 
 ### 10. Pull Request 작성
 
