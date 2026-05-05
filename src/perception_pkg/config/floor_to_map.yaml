@@ -1,0 +1,12 @@
+floor_to_map_node:
+  ros__parameters:
+    input_topic: "/cctv/objects_floor"
+    output_topic: "/cctv/objects_map"
+    map_frame: "map"
+    tx: 0.0
+    ty: 0.0
+    yaw: 0.0
+    use_homography: false
+    homography: [1.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0]
