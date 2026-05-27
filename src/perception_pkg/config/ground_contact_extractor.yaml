@@ -1,7 +1,0 @@
-ground_contact_extractor_node:
-  ros__parameters:
-    input_topic: "/yolo/detections"
-    output_topic: "/cctv/footpoints_pixel"
-    target_classes: ["person"]
-    min_confidence: 0.4
-    output_frame_id: ""

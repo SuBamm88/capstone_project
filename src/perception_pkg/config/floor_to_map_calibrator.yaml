@@ -1,0 +1,15 @@
+aruco_floor_to_map_calibrator:
+  ros__parameters:
+    marker_ids: [1, 2, 3, 4]
+    marker_floor_points: [0.0, 0.0,
+                          0.4, 0.0,
+                          0.4, 0.3,
+                          0.0, 0.3]
+    # Replace these with the same marker centers measured in the SLAM map frame.
+    marker_map_points: [0.0, 0.0,
+                        0.4, 0.0,
+                        0.4, 0.3,
+                        0.0, 0.3]
+    parent_frame: "map"
+    child_frame: "floor"
+    output_yaml: "config/floor_to_map_tf.yaml"

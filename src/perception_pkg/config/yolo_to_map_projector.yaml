@@ -1,0 +1,11 @@
+yolo_to_map_projector_node:
+  ros__parameters:
+    input_topic: "/yolo/detections"
+    floor_topic: "/cctv/objects_floor"
+    output_topic: "/cctv/objects_map"
+    floor_frame: "floor"
+    map_frame: "map"
+    target_classes: ["person"]
+    min_confidence: 0.4
+    bbox_xy_origin: "center"
+    tf_timeout_sec: 0.2
