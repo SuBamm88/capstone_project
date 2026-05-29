@@ -8,7 +8,7 @@ from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    package_share = get_package_share_directory('scout_mini_bringup')
+    package_share = get_package_share_directory('bringup_pkg')
     slam_launch = os.path.join(
         get_package_share_directory('slam_toolbox'),
         'launch',

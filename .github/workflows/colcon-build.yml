@@ -27,7 +27,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rosdep install --rosdistro humble --from-paths src --ignore-src -r -y
+          sudo apt-get update
+          rosdep install --rosdistro humble --from-paths src --ignore-src -r -y --skip-keys "slam_toolbox nav2_bringup"
 
       - name: Build workspace
         run: |
