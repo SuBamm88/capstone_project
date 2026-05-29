@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="cctv_costmap_layer">
+    <class type="cctv_costmap_layer::CctvLayer" base_class_type="nav2_costmap_2d::Layer">
+      <description>Marks CCTV-provided PoseArray objects as Nav2 costmap obstacles.</description>
+    </class>
+  </library>
+</class_libraries>

@@ -1,0 +1,27 @@
+cam_to_map:
+  ros__parameters:
+    map_image_path: "resource/scout_mini_map_3.pgm"
+    detections_topic: "/yolo/detections"
+    slam_map_topic: "/cctv/slam_map"
+    image_points:
+      [
+        441.0, 366.0,
+        583.0, 200.0,
+        622.0, 152.0,
+        440.0, 157.0,
+        306.0, 163.0,
+        208.0, 199.0,
+        84.0, 243.0,
+        101.0, 411.0,
+      ]
+    map_points:
+      [
+        208.0, 471.0,
+        262.0, 468.0,
+        343.0, 456.0,
+        348.0, 412.0,
+        337.0, 365.0,
+        269.0, 369.0,
+        208.0, 375.0,
+        207.0, 432.0,
+      ]

@@ -1,0 +1,25 @@
+/**:
+    ros__parameters:
+      video_device: "/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_82DD28FE-video-index0"
+      framerate: 30.0
+      io_method: "mmap"
+      frame_id: "camera3"
+      pixel_format: "mjpeg2rgb"
+      av_device_format: "YUV422P"
+      image_width: 640
+      image_height: 480
+      camera_name: "C93-Orange"
+      # reusing same camera intrinsics only for demo, should really be unique for camera2"
+      camera_info_url: "package://usb_cam/config/camera_info3.yaml"
+      brightness: -1
+      contrast: -1
+      saturation: -1
+      sharpness: 255 # 선명도. 높이면 경계가 뚜렷해지지만 노이즈 증가
+      gain: -1 # 카메라 신호 증폭, 올리면 밝아지지만 노이즈 증가
+      auto_white_balance: true #자동 화이트밸런스
+      white_balance: 5000 # 밝아서 높임. 낮을수록 푸른빛, 높을수록 붉은 빛
+      autoexposure: true # 자동 노출, 자동 노출은 빛이 바뀔 때마다 화면 밝기가 들쭉날쭉.
+      exposure: 10 # 노출 시간, 적당한 값으로 시작하고 환경 따라 튜닝해야 함 (실외 낮에는 더 작은 값, 실내는 더 큰 값 )
+      autofocus: false # 자동 초점, 초점이 자동으로 움직이면 영상이 순간 뿌옇게 되기도 함.
+      focus: 0 # 수동 초점 값. 보통 "무한대 초점" 또는 "가장 멀리"에 맞추는 값.
+      exposure_dynamic_framerate: false # 자동으로 FPS를 낮춰서 프레임이 끊기지 않게 해주는 기능 끄기. (FPS는 고정)

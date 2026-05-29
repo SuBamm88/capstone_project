@@ -1,0 +1,18 @@
+# velodyne -> camera2
+parent_frame: "velodyne"
+child_frame: "camera2"
+translation:
+  x: -0.256307
+  y: 0.010760
+  z: 0.130818
+rotation_matrix:
+  r11:  0.86602525
+  r12:  0.00000000
+  r13:  0.50000027
+  r21:  0.00000000
+  r22:  1.00000000
+  r23:  0.00000000
+  r31: -0.50000027
+  r32:  0.00000000
+  r33:  0.86602525
+

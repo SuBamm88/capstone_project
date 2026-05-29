@@ -8,7 +8,8 @@ Example:
 src/
 ├── control_pkg/
 ├── perception_pkg/
-└── planning_pkg/
+├── planning_pkg/
+└── third_party/
 ```
 
 Each teammate should mainly work in their assigned package or node files on a separate branch.

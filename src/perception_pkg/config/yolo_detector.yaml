@@ -1,0 +1,8 @@
+yolo_detector_node:
+  ros__parameters:
+    model_path: "resource/best.pt"
+    image_topic: "/camera2/image_raw"
+    annotated_topic: "/yolo/annotated_image"
+    detections_topic: "/yolo/detections"
+    confidence: 0.5
+    publish_annotated: true
