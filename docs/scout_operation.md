@@ -51,7 +51,7 @@ ros2 launch velodyne velodyne-all-nodes-VLP32C-composed-launch.py
 맵 작성 단계에서는 `slam_toolbox`를 사용한다.
 
 ```bash
-ros2 launch scout_mini_bringup scout_slam.launch.py
+ros2 launch bringup_pkg scout_slam.launch.py
 ```
 
 설명:
@@ -62,20 +62,20 @@ ros2 launch scout_mini_bringup scout_slam.launch.py
 맵이 충분히 생성되면 다른 터미널에서 저장:
 
 ```bash
-ros2 run nav2_map_server map_saver_cli -f src/scout_mini_bringup/maps/scout_mini_map
+ros2 run nav2_map_server map_saver_cli -f src/bringup_pkg/maps/scout_mini_map
 ```
 
 저장 결과:
 
-- `src/scout_mini_bringup/maps/scout_mini_map.pgm`
-- `src/scout_mini_bringup/maps/scout_mini_map.yaml`
+- `src/bringup_pkg/maps/scout_mini_map.pgm`
+- `src/bringup_pkg/maps/scout_mini_map.yaml`
 
 ## Nav2
 
 맵 저장 후 SLAM은 종료하고, 저장된 맵을 사용해 Nav2를 실행한다.
 
 ```bash
-  ros2 launch scout_mini_bringup scout_cctv_nav2.launch.py
+  ros2 launch bringup_pkg scout_cctv_nav2.launch.py
 
 ```
 
