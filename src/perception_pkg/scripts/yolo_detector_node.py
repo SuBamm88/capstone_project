@@ -18,7 +18,9 @@ class YoloDetectorNode(Node):
         super().__init__("yolo_detector_node")
 
         self.bridge = CvBridge()
-        self.image_topic = self.declare_parameter("image_topic", "/camera1/image_raw").value
+        self.image_topic = self.declare_parameter(
+            "image_topic", "/camera2/image_raw"
+        ).value
         self.annotated_topic = self.declare_parameter(
             "annotated_topic", "/yolo/annotated_image"
         ).value
@@ -29,11 +31,10 @@ class YoloDetectorNode(Node):
         self.publish_annotated = bool(
             self.declare_parameter("publish_annotated", True).value
         )
-        model_path = self.declare_parameter(
-            "model_path", "resource/best.pt"
-        ).value
+        model_path = self.declare_parameter("model_path", "resource/best.pt").value
+        resolved_model_path = self._package_path(model_path)
 
-        self.model = YOLO(self._package_path(model_path))
+        self.model = YOLO(resolved_model_path)
 
         self.image_sub = self.create_subscription(
             Image,
@@ -55,7 +56,9 @@ class YoloDetectorNode(Node):
             )
 
         self.get_logger().info(
-            f"YOLO detector started: {self.image_topic} -> {self.detections_topic}"
+            "YOLO detector started: "
+            f"model={resolved_model_path}, "
+            f"{self.image_topic} -> {self.detections_topic}"
         )
 
     def image_callback(self, msg):
@@ -91,6 +94,15 @@ class YoloDetectorNode(Node):
 
             if self.publish_annotated:
                 self._draw_detection(frame, x1, y1, x2, y2, class_name, confidence)
+
+            bottom_u = int(center_x)
+            bottom_v = int(y2)
+            self.get_logger().info(
+                f"class={class_name}, score={confidence:.2f}, "
+                f"bbox_center=({center_x:.1f}, {center_y:.1f}), "
+                f"bbox_size=({size_x:.1f}, {size_y:.1f}), "
+                f"bottom_center=({bottom_u}, {bottom_v})"
+            )
 
         self.detections_pub.publish(detection_array_msg)
 

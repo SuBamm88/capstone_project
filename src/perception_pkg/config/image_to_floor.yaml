@@ -1,6 +1,0 @@
-yolo_to_map_projector_node:
-  ros__parameters:
-    floor_frame: "floor"
-    image_to_floor_homography: [1.0, 0.0, 0.0,
-                                0.0, 1.0, 0.0,
-                                0.0, 0.0, 1.0]
