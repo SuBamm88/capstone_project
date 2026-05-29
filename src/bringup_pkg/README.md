@@ -1,4 +1,4 @@
-# scout_mini_bringup
+# bringup_pkg
 
 Project-level launch and tuning package for the current capstone stack.
 
@@ -34,14 +34,14 @@ Current layout:
 Build the CCTV demo packages from the workspace root:
 
 ```bash
-colcon build --symlink-install --packages-select cctv_costmap_layer cctv_object_tools scout_mini_bringup
+colcon build --symlink-install --packages-select cctv_costmap_layer cctv_object_tools bringup_pkg
 source install/setup.bash
 ```
 
 Run Nav2 with the CCTV costmap layer:
 
 ```bash
-ros2 launch scout_mini_bringup scout_cctv_nav2.launch.py
+ros2 launch bringup_pkg scout_cctv_nav2.launch.py
 ```
 
 In another terminal, run the RViz click-to-PoseArray demo publisher:
