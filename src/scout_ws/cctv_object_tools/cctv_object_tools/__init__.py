@@ -1,0 +1,1 @@
+"""CCTV object demo tools."""
