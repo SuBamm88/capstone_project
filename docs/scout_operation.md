@@ -3,7 +3,7 @@
 - SCOUT MINI와 CAN 연결 완료
 - Velodyne VLP-32C 연결 완료
 
-아래 명령 예시는 워크스페이스 루트 `~/capstone/scout_ws`에서 실행한다고 가정한다.
+아래 명령 예시는 워크스페이스 루트에서 실행한다고 가정한다.
 
 
 ### 1. CAN 인터페이스 up + SCOUT MINI base 실행

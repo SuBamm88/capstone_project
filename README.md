@@ -28,6 +28,22 @@ capstone_project/
 
 ## 빠른 시작
 
+### 환경
+- Ubuntu 22.04
+- ROS 2 Humble
+
+### 의존성 설치
+```bash
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+### 빌드
+```bash
+source /opt/ros/humble/setup.bash
+colcon build
+source install/setup.bash
+```
+
 ## 팀 협업 규칙
 
 1. `main` 브랜치에서는 절대 작업하지 않는다.
