@@ -155,7 +155,7 @@ class LidarObjectNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.sub = self.create_subscription(
-            PointCloud2, self.cloud_topic, self.cloud_callback, 5
+            PointCloud2, self.cloud_topic, self.cloud_callback, 10
         )
         self.pub = self.create_publisher(TrackedObjectArray, self.objects_topic, 10)
 
