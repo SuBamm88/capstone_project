@@ -1,0 +1,15 @@
+fusion:
+  ros__parameters:
+    map_frame: "map"
+    # One topic per camera's cctv_to_map instance.
+    cctv_topics: ["/cctv/objects"]
+    # lidar_object 노드의 출력 (TrackedObjectArray, map-frame).
+    lidar_topic: "/lidar/objects"
+    # Two map-frame points within this distance [m] are the same object.
+    # Tune from the accuracy test in Test.md (start 0.6, typical 0.5-1.0).
+    match_threshold: 0.6
+    cctv_timeout: 1.0
+    lidar_timeout: 0.5
+    pred_horizon: 2.0
+    pred_dt: 0.5
+    publish_rate: 10.0

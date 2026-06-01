@@ -1,0 +1,31 @@
+# LiDAR 동적 객체 검출/추적 (racing_ws 모방, self-contained)
+# 값들은 평탄한 실내 + base_link 위 0.6 m 수평 장착 VLP-32C 기준 시작점.
+
+lidar_object:
+  ros__parameters:
+    cloud_topic: "/velodyne_points"
+    objects_topic: "/lidar/objects"
+    map_frame: "map"
+
+    # 지면제거(z-밴드) + 거리 크롭 (velodyne frame 기준, 단위 m)
+    min_z: -0.4      # 바닥(z≈-0.6m) 위로 약간
+    max_z: 1.5       # 천장/키 한계
+    min_range: 0.3   # 자기차량 주변 제외
+    max_range: 8.0   # 그 이상 원거리 무시
+
+    voxel: 0.05      # 복셀 다운샘플 한 변 [m]
+
+    # DBSCAN (racing_ws: eps=0.40, min_points=5)
+    eps: 0.40        # [m]
+    min_samples: 5
+
+    # 클러스터 필터
+    max_object_size: 1.2     # XY 최대 변이 이보다 크면 벽으로 보고 제외 [m]
+    min_cluster_points: 5
+
+    # 추적 (등속 칼만필터 + 헝가리안 데이터연관)
+    assoc_threshold: 0.6     # 트랙↔검출 게이팅 거리 [m]
+    process_noise: 1.0       # 가속도 잡음 표준편차 [m/s^2] (클수록 기동에 민감)
+    meas_noise: 0.05         # 측정 잡음 공분산 [m^2] (클러스터 위치 불확실성)
+    min_hits: 2              # 발행 최소 관측수 (1프레임 오탐 억제)
+    max_coast: 3             # 미관측 시 KF 예측으로 유지할 최대 프레임 (가려짐 대응)

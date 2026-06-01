@@ -1,0 +1,24 @@
+# CCTV ground-coverage wedges for RViz.
+# cameras: flat list, 6 values per camera:
+#   [x, y, yaw_deg, hfov_deg, range_m, color_id]
+#     x, y      : camera ground position in map frame [m]
+#                 (robot under the lens, tf2_echo map base_link)
+#     yaw_deg   : horizontal heading in map frame (x-axis = 0, CCW positive).
+#                 Leave as your best guess, or use the auto value printed by
+#                 cctv_to_map (see Test.md).
+#     hfov_deg  : horizontal field of view. C922 ~= 56, C930e ~= 67.
+#     range_m   : how far down the corridor the wedge is drawn.
+#     color_id  : 0 orange, 1 blue, 2 green, 3 magenta.
+#
+# PLACEHOLDERS — replace with measured values.
+
+cctv_fov:
+  ros__parameters:
+    map_frame: "map"
+    marker_topic: "/cctv/fov_markers"
+    publish_rate: 1.0
+    cameras:
+      [
+        1.5, 3.2, 270.0, 56.0, 5.0, 0.0,
+        -1.5, 3.2, 270.0, 67.0, 5.0, 1.0,
+      ]
