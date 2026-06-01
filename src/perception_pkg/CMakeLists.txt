@@ -16,6 +16,12 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  scripts/cctv_pose_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME cctv_pose_node
+)
+
+install(PROGRAMS
   scripts/cctv_to_map_node.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME cctv_to_map
