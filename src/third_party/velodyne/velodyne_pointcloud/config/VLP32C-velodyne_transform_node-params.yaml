@@ -8,4 +8,4 @@ velodyne_transform_node:
         fixed_frame: ""
         target_frame: ""
         organize_cloud: true
-        use_sensor_data_qos: true
+        use_sensor_data_qos: false
