@@ -1,0 +1,40 @@
+# Calibration for ONE camera. Copy this block per camera (camera2, camera3...).
+#
+# image_points: pixel (u, v) pairs read with pixel_picker_node.
+# map_points:   matching ground points in METERS in the map frame, read by
+#               placing the robot on each marker and running
+#               `ros2 run tf2_ros tf2_echo map base_link` (Translation x, y).
+# The two lists MUST be in the same order and the same length (>= 4 pairs;
+# 8+ recommended for a robust RANSAC fit).
+#
+# These are PLACEHOLDERS — replace with your measured values (see Test.md).
+
+cctv_to_map:
+  ros__parameters:
+    detections_topic: "/yolo/detections"
+    objects_topic: "/cctv/objects_map"
+    objects_full_topic: "/cctv/objects"
+    map_frame: "map"
+    source_name: "CCTV"
+    image_points:
+      [
+        441.0, 366.0,
+        583.0, 200.0,
+        622.0, 152.0,
+        440.0, 157.0,
+        306.0, 163.0,
+        208.0, 199.0,
+        84.0, 243.0,
+        101.0, 411.0,
+      ]
+    map_points:   # METERS in map frame (NOT image pixels)
+      [
+        0.50, 0.30,
+        1.20, 0.90,
+        1.80, 1.40,
+        1.10, 1.60,
+        0.40, 1.55,
+        -0.20, 1.10,
+        -0.70, 0.60,
+        -0.60, -0.10,
+      ]
