@@ -87,8 +87,8 @@ class YoloDetectorNode(Node):
         center_y = float((y1 + y2) / 2.0)
         height = float(y2 - y1)
 
-        if name == 'person':
-            # 사람: bbox 하단 중앙보다 살짝 위쪽의 보정된 발점
+        if name in ('person', 'robot'):
+            # 사람/로봇: bbox 하단 중앙 부근의 보정된 점
             k_person = 0.90
             anchor_u = center_x
             anchor_v = float(y1 + k_person * height)
@@ -109,14 +109,14 @@ class YoloDetectorNode(Node):
         return anchor_u, anchor_v, anchor_type
 
     def get_marker_color(self, name):
-        if name == 'person':
+        if name in ('person', 'robot'):
             return ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
         if name == 'box':
             return ColorRGBA(r=0.0, g=0.0, b=1.0, a=1.0)
         return ColorRGBA(r=1.0, g=1.0, b=0.0, a=1.0)
 
     def get_cv_color(self, name):
-        if name == 'person':
+        if name in ('person', 'robot'):
             return (0, 0, 255)
         if name == 'box':
             return (255, 0, 0)
