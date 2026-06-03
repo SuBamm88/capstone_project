@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""Convert left/right shoulder pixels to map direction vectors."""
+
+import json
+import math
+import os
+
+import cv2
+import numpy as np
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from geometry_msgs.msg import Point, PoseArray
+from rclpy.node import Node
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
+from std_msgs.msg import String
+from visualization_msgs.msg import Marker, MarkerArray
+import yaml
+
+
+class PersonDirectionNode(Node):
+    def __init__(self):
+        super().__init__("person_direction_node")
+
+        self.pose_topic = self.declare_parameter(
+            "pose_topic", "/cctv_pose/person_pose_info"
+        ).value
+        self.direction_topic = self.declare_parameter(
+            "direction_topic", "/cctv_pose/person_direction_info"
+        ).value
+        self.cctv_to_map_topic = self.declare_parameter(
+            "cctv_to_map_topic", "/cctv/objects_map"
+        ).value
+        self.map_frame = self.declare_parameter("map_frame", "map").value
+        self.direction_pixel_step = float(
+            self.declare_parameter("direction_pixel_step", 30.0).value
+        )
+        self.direction_smoothing_alpha = float(
+            self.declare_parameter("direction_smoothing_alpha", 0.35).value
+        )
+        self.side_motion_weight = float(
+            self.declare_parameter("side_motion_weight", 0.7).value
+        )
+        self.min_motion_distance = float(
+            self.declare_parameter("min_motion_distance", 0.08).value
+        )
+
+        double_array = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY)
+        image_points = self.declare_parameter(
+            "image_points", [], double_array
+        ).value
+        map_points = self.declare_parameter(
+            "map_points", [], double_array
+        ).value
+
+        if len(image_points) < 8 or len(map_points) < 8:
+            try:
+                package_share = get_package_share_directory("perception_pkg")
+                config_path = os.path.join(package_share, "config", "cctv_to_map.yaml")
+                with open(config_path, "r") as f:
+                    cfg = yaml.safe_load(f)
+                params = cfg.get("cctv_to_map", {}).get("ros__parameters", {})
+                image_points = params.get("image_points", image_points)
+                map_points = params.get("map_points", map_points)
+                self.cctv_to_map_topic = params.get(
+                    "objects_topic", self.cctv_to_map_topic
+                )
+                self.get_logger().info(f"Loaded homography params from {config_path}")
+            except Exception as exc:
+                self.get_logger().warn(
+                    f"Fallback homography config load failed: {exc}"
+                )
+
+        self.image_points = self._pairs(image_points, "image_points")
+        self.map_points = self._pairs(map_points, "map_points")
+        if len(self.image_points) != len(self.map_points):
+            raise ValueError("image_points and map_points must have the same length")
+
+        self.h_cam_to_map, _ = cv2.findHomography(
+            self.image_points,
+            self.map_points,
+            method=cv2.RANSAC,
+            ransacReprojThreshold=0.05,
+        )
+        if self.h_cam_to_map is None:
+            raise RuntimeError("Failed to compute camera-to-map homography")
+
+        self.direction_state = {}
+        self.position_state = {}
+        self.last_cctv_map_points = []
+        self.cctv_to_map_sub = self.create_subscription(
+            PoseArray,
+            self.cctv_to_map_topic,
+            self.cctv_to_map_callback,
+            10,
+        )
+
+        self.pose_sub = self.create_subscription(
+            String,
+            self.pose_topic,
+            self.pose_callback,
+            10,
+        )
+        self.direction_pub = self.create_publisher(String, self.direction_topic, 10)
+        self.marker_pub = self.create_publisher(MarkerArray, "/cctv_pose/person_direction_markers", 10)
+
+        self.get_logger().info(
+            f"person_direction_node started: {self.pose_topic} -> {self.direction_topic}"
+        )
+        self.get_logger().info(f"H_cam_to_map:\n{self.h_cam_to_map}")
+
+    def pose_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().warn(f"Invalid JSON on {self.pose_topic}: {exc}")
+            return
+
+        if not isinstance(payload, list):
+            self.get_logger().warn("person_pose_info payload must be a JSON list")
+            return
+
+        output = []
+        for idx, item in enumerate(payload):
+            if not isinstance(item, dict):
+                continue
+
+            person_id = item.get("person_id")
+            front_back = item.get("front_back", "FRONT")
+            pixels = item.get("raw_pixel") or item.get("undistorted_pixel") or {}
+
+            left = pixels.get("left_shoulder")
+            right = pixels.get("right_shoulder")
+            bottom_center = pixels.get("bbox_bottom_center")
+            if bottom_center is None or bottom_center.get("u") is None or bottom_center.get("v") is None:
+                bottom_center = pixels.get("shoulder_center")
+
+            if not left or not right or not bottom_center:
+                continue
+
+            try:
+                lu = float(left["u"])
+                lv = float(left["v"])
+                ru = float(right["u"])
+                rv = float(right["v"])
+                bu = float(bottom_center["u"])
+                bv = float(bottom_center["v"])
+            except (TypeError, ValueError, KeyError):
+                continue
+
+            base_x, base_y = self._pixel_to_map(bu, bv)
+            closest = self._find_closest_map_point(bu, bv)
+            if closest is not None:
+                bx, by = closest
+            else:
+                bx, by = base_x, base_y
+
+            # YOLO left/right shoulders are anatomical, so their image order can
+            # swap when the person turns. Use image left-to-right only for the
+            # shoulder-line direction, then let front_back choose the sign.
+            if lu <= ru:
+                img_left_u, img_left_v = lu, lv
+                img_right_u, img_right_v = ru, rv
+            else:
+                img_left_u, img_left_v = ru, rv
+                img_right_u, img_right_v = lu, lv
+
+            shoulder_u = img_right_u - img_left_u
+            shoulder_v = img_right_v - img_left_v
+            shoulder_len = math.hypot(shoulder_u, shoulder_v)
+            if shoulder_len <= 1e-6:
+                continue
+
+            dir_u = -shoulder_v / shoulder_len
+            dir_v = shoulder_u / shoulder_len
+
+            if front_back in ("BACK", "BACK_SIDE", "FRONT_SIDE"):
+                dir_u = -dir_u
+                dir_v = -dir_v
+
+            probe_x, probe_y = self._pixel_to_map(
+                bu + dir_u * self.direction_pixel_step,
+                bv + dir_v * self.direction_pixel_step,
+            )
+            nx = probe_x - base_x
+            ny = probe_y - base_y
+
+            map_dir_len = math.hypot(nx, ny)
+            if map_dir_len > 1e-6:
+                nx /= map_dir_len
+                ny /= map_dir_len
+            else:
+                continue
+
+            nx, ny = self._blend_motion_direction(person_id, front_back, nx, ny, bx, by)
+            nx, ny = self._smooth_direction(person_id, nx, ny)
+
+            output.append({
+                "person_id": person_id,
+                "front_back": front_back,
+                "bottom_center_map": {"x": round(bx, 4), "y": round(by, 4)},
+                "direction": {"x": round(nx, 6), "y": round(ny, 6), "z": 0.0},
+            })
+
+        if output:
+            out_msg = String()
+            out_msg.data = json.dumps(output, ensure_ascii=False)
+            self.direction_pub.publish(out_msg)
+            self._publish_direction_markers(output)
+
+    def cctv_to_map_callback(self, msg):
+        self.last_cctv_map_points = [
+            (float(pose.position.x), float(pose.position.y)) for pose in msg.poses
+        ]
+
+    def _find_closest_map_point(self, u, v):
+        if not self.last_cctv_map_points:
+            return None
+        predicted = self._pixel_to_map(u, v)
+        best = None
+        best_dist = float("inf")
+        for px, py in self.last_cctv_map_points:
+            dx = predicted[0] - px
+            dy = predicted[1] - py
+            dist = dx * dx + dy * dy
+            if dist < best_dist:
+                best_dist = dist
+                best = (px, py)
+        if best is None:
+            return None
+        if best_dist > 4.0:  # fallback if map match is too far from predicted bottom center
+            return None
+        return best
+
+    def _pixel_to_map(self, u, v):
+        pt = np.array([[[u, v]]], dtype=np.float32)
+        mapped = cv2.perspectiveTransform(pt, self.h_cam_to_map)
+        return float(mapped[0, 0, 0]), float(mapped[0, 0, 1])
+
+    def _smooth_direction(self, person_id, nx, ny):
+        key = person_id if person_id is not None else "__unknown__"
+        prev = self.direction_state.get(key)
+        if prev is None:
+            self.direction_state[key] = (nx, ny)
+            return nx, ny
+
+        px, py = prev
+
+        alpha = max(0.0, min(1.0, self.direction_smoothing_alpha))
+        sx = (1.0 - alpha) * px + alpha * nx
+        sy = (1.0 - alpha) * py + alpha * ny
+        length = math.hypot(sx, sy)
+        if length <= 1e-6:
+            return px, py
+
+        sx /= length
+        sy /= length
+        self.direction_state[key] = (sx, sy)
+        return sx, sy
+
+    def _blend_motion_direction(self, person_id, front_back, nx, ny, bx, by):
+        key = person_id if person_id is not None else "__unknown__"
+        prev = self.position_state.get(key)
+        self.position_state[key] = (bx, by)
+
+        if front_back not in ("FRONT_SIDE", "BACK_SIDE"):
+            return nx, ny
+        if prev is None:
+            return nx, ny
+
+        px, py = prev
+        mx = bx - px
+        my = by - py
+        motion_len = math.hypot(mx, my)
+        if motion_len < max(0.0, self.min_motion_distance):
+            return nx, ny
+
+        mx /= motion_len
+        my /= motion_len
+        motion_weight = max(0.0, min(1.0, self.side_motion_weight))
+        pose_weight = 1.0 - motion_weight
+
+        bx_dir = pose_weight * nx + motion_weight * mx
+        by_dir = pose_weight * ny + motion_weight * my
+        blend_len = math.hypot(bx_dir, by_dir)
+        if blend_len <= 1e-6:
+            return nx, ny
+
+        return bx_dir / blend_len, by_dir / blend_len
+
+    def _publish_direction_markers(self, output):
+        marker_array = MarkerArray()
+        delete_marker = Marker()
+        delete_marker.header.frame_id = self.map_frame
+        delete_marker.header.stamp = self.get_clock().now().to_msg()
+        delete_marker.action = Marker.DELETEALL
+        marker_array.markers.append(delete_marker)
+
+        for idx, item in enumerate(output):
+            bottom = item["bottom_center_map"]
+            dx = float(item["direction"]["x"])
+            dy = float(item["direction"]["y"])
+            center_x = bottom["x"]
+            center_y = bottom["y"]
+            # make arrows longer and lifted slightly above the map for visibility
+            length = 1.0
+            arrow_z = 0.08
+
+            # color by front/back for clearer semantics
+            fb = item.get("front_back", "FRONT")
+            if fb == "FRONT":
+                r, g, b = 0.0, 1.0, 0.0
+            elif fb == "FRONT_SIDE":
+                r, g, b = 0.0, 0.8, 1.0
+            elif fb == "BACK":
+                r, g, b = 1.0, 0.0, 0.0
+            else:
+                r, g, b = 1.0, 0.5, 0.0
+
+            marker = Marker()
+            marker.header.frame_id = self.map_frame
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "person_direction"
+            marker.id = idx
+            marker.type = Marker.ARROW
+            marker.action = Marker.ADD
+            # scale.x: shaft diameter, scale.y: head diameter, scale.z: head length
+            marker.scale.x = 0.2
+            marker.scale.y = 0.5
+            marker.scale.z = 0.6
+            marker.color.r = r
+            marker.color.g = g
+            marker.color.b = b
+            marker.color.a = 1.0
+            marker.pose.orientation.w = 1.0
+            marker.points = [
+                Point(x=center_x, y=center_y, z=arrow_z),
+                Point(x=center_x + dx * length, y=center_y + dy * length, z=arrow_z),
+            ]
+            marker_array.markers.append(marker)
+
+            base_marker = Marker()
+            base_marker.header.frame_id = self.map_frame
+            base_marker.header.stamp = self.get_clock().now().to_msg()
+            base_marker.ns = "person_direction_base"
+            base_marker.id = idx
+            base_marker.type = Marker.SPHERE
+            base_marker.action = Marker.ADD
+            base_marker.scale.x = 0.20
+            base_marker.scale.y = 0.20
+            base_marker.scale.z = 0.06
+            base_marker.color.r = 1.0
+            base_marker.color.g = 1.0
+            base_marker.color.b = 0.0
+            base_marker.color.a = 1.0
+            base_marker.pose.position = Point(x=center_x, y=center_y, z=arrow_z)
+            base_marker.pose.orientation.w = 1.0
+            marker_array.markers.append(base_marker)
+
+        self.marker_pub.publish(marker_array)
+
+    def _pairs(self, values, name):
+        if len(values) % 2 != 0 or len(values) < 8:
+            raise ValueError(f"{name} must contain at least four x/y pairs")
+        return np.array(values, dtype=np.float32).reshape((-1, 2))
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = PersonDirectionNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

@@ -13,7 +13,7 @@ def generate_launch_description():
 
     nav2_launch = os.path.join(nav2_share, 'launch', 'bringup_launch.py')
     default_nav2_params = os.path.join(package_share, 'config', 'nav2_params_cctv.yaml')
-    default_map = os.path.join(package_share, 'maps', 'scout_mini_map_3.yaml')
+    default_map = os.path.join(package_share, 'maps', 'map.yaml')
 
     return LaunchDescription([
         DeclareLaunchArgument(

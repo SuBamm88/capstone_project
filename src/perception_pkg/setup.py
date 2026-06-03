@@ -29,6 +29,7 @@ setup(
             'lidar_object_node = perception_pkg.lidar_object_node:main',
             'pixel_picker_node = perception_pkg.pixel_picker_node:main',
             'yolo_detector_node = perception_pkg.yolo_detector_node:main',
+            'person_direction_node = perception_pkg.person_direction_node:main',
         ],
     },
 )

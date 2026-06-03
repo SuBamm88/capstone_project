@@ -28,6 +28,12 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  scripts/person_direction_node
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME person_direction_node
+)
+
+install(PROGRAMS
   scripts/pixel_picker_node.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME pixel_picker_node

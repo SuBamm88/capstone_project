@@ -69,6 +69,9 @@ class CCTVPoseNode(Node):
         self.bridge = CvBridge()
         self.model = YOLO(POSE_MODEL_PATH)
         self.face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
+        self.enable_pose_tracking = bool(
+            self.declare_parameter("enable_pose_tracking", True).value
+        )
 
         # 기본 카메라 파라미터
         self.camera_matrix = np.array([
@@ -171,7 +174,22 @@ class CCTVPoseNode(Node):
 
         faces = self.detect_faces(gray)
 
-        results = self.model(frame, conf=0.4, verbose=False)
+        if self.enable_pose_tracking:
+            try:
+                results = self.model.track(
+                    frame,
+                    conf=0.4,
+                    persist=True,
+                    verbose=False,
+                    tracker="bytetrack.yaml",
+                )
+            except Exception as exc:
+                self.get_logger().warn(
+                    f"YOLO pose tracking failed, falling back to detection: {exc}"
+                )
+                results = self.model(frame, conf=0.4, verbose=False)
+        else:
+            results = self.model(frame, conf=0.4, verbose=False)
         output_list = []
 
         if len(results) > 0 and results[0].keypoints is not None:
@@ -189,14 +207,24 @@ class CCTVPoseNode(Node):
                     dtype=float
                 )
 
-            for person_id, (kpts, confs) in enumerate(zip(keypoints_xy, keypoints_conf)):
+            boxes = None
+            if hasattr(results[0], "boxes"):
+                boxes = list(results[0].boxes)
+
+            for detection_idx, (kpts, confs) in enumerate(zip(keypoints_xy, keypoints_conf)):
                 if kpts is None or len(kpts) < 17:
                     continue
 
                 if confs is None or len(confs) < 17:
                     continue
 
-                result = self.extract_pose_info(person_id, kpts, confs, faces)
+                bbox = None
+                if boxes is not None and detection_idx < len(boxes):
+                    bbox = boxes[detection_idx]
+
+                person_id = self.resolve_track_id(bbox, detection_idx)
+
+                result = self.extract_pose_info(person_id, kpts, confs, faces, bbox)
 
                 if result is None:
                     continue
@@ -206,7 +234,26 @@ class CCTVPoseNode(Node):
 
         self.publish_result(frame, msg, output_list)
 
-    def extract_pose_info(self, person_id, kpts, confs, faces):
+    def resolve_track_id(self, bbox, fallback_idx):
+        if bbox is None or not hasattr(bbox, "id"):
+            return fallback_idx
+
+        track_id = bbox.id
+        if track_id is None:
+            return fallback_idx
+
+        try:
+            if hasattr(track_id, "cpu"):
+                values = track_id.cpu().numpy().reshape(-1)
+                if len(values) > 0:
+                    return int(values[0])
+            if isinstance(track_id, (list, tuple)) and track_id:
+                return int(track_id[0])
+            return int(track_id)
+        except Exception:
+            return fallback_idx
+
+    def extract_pose_info(self, person_id, kpts, confs, faces, bbox=None):
         min_conf = 0.35
 
         nose = kpts[0]
@@ -250,22 +297,55 @@ class CCTVPoseNode(Node):
             shoulder_center_raw_v
         )
 
+        bbox_bottom_center_raw = None
+        bbox_bottom_center_undist = None
+        bbox_coords = None
+        if bbox is not None:
+            try:
+                x1, y1, x2, y2 = bbox.xyxy[0].cpu().numpy()
+                bbox_coords = [float(x1), float(y1), float(x2), float(y2)]
+                bbox_bottom_center_raw = ((x1 + x2) / 2.0, y2)
+                bbox_bottom_center_undist = self.undistort_point(
+                    bbox_bottom_center_raw[0],
+                    bbox_bottom_center_raw[1],
+                )
+            except Exception:
+                bbox_bottom_center_raw = None
+                bbox_bottom_center_undist = None
+                bbox_coords = None
+
         # 전방 / 후방 판단
         nose_visible = nose_conf >= min_conf
         left_ear_visible = left_ear_conf >= min_conf
         right_ear_visible = right_ear_conf >= min_conf
+        ear_count = int(left_ear_visible) + int(right_ear_visible)
+        ear_mean = (left_ear_conf + right_ear_conf) / 2.0
+        ear_max = max(left_ear_conf, right_ear_conf)
+        ear_min = min(left_ear_conf, right_ear_conf)
 
         nose_pt = (float(nose[0]), float(nose[1]))
         face_detected = self.is_face_near_head(faces, nose_pt, shoulder_width)
 
-        if face_detected:
+        if nose_visible and ear_count == 1:
+            front_back = "FRONT_SIDE"
+        elif face_detected and nose_visible:
             front_back = "FRONT"
         elif nose_visible:
-            front_back = "FRONT"
-        elif left_ear_visible and right_ear_visible:
+            # 코가 분명히 보이면 기본 FRONT
+            # 다만 양쪽 귀가 모두 강하고 코보다 훨씬 강하면 BACK으로 보정
+            if ear_count == 2 and ear_mean > nose_conf * 1.2:
+                front_back = "BACK"
+            else:
+                front_back = "FRONT"
+        elif ear_count == 2:
+            # 양쪽 귀가 모두 보이면 뒤돌아 본 것으로 판단
             front_back = "BACK"
-        elif left_ear_visible or right_ear_visible:
-            front_back = "BACK_SIDE"
+        elif ear_count == 1:
+            # 한쪽 귀만 보이고 코가 기준 미만이면 FRONT로 보지 않는다.
+            if ear_max >= min_conf * 1.2 and ear_min < min_conf * 0.6:
+                front_back = "BACK_SIDE"
+            else:
+                front_back = "BACK_SIDE"
         else:
             front_back = "BACK"
 
@@ -301,7 +381,12 @@ class CCTVPoseNode(Node):
                 "shoulder_center": {
                     "u": round(shoulder_center_raw_u, 2),
                     "v": round(shoulder_center_raw_v, 2)
-                }
+                },
+                "bbox_bottom_center": {
+                    "u": round(bbox_bottom_center_raw[0], 2) if bbox_bottom_center_raw is not None else None,
+                    "v": round(bbox_bottom_center_raw[1], 2) if bbox_bottom_center_raw is not None else None
+                },
+                "bbox": bbox_coords,
             },
 
             "undistorted_pixel": {
@@ -316,6 +401,10 @@ class CCTVPoseNode(Node):
                 "shoulder_center": {
                     "u": round(shoulder_center_undist_u, 2),
                     "v": round(shoulder_center_undist_v, 2)
+                },
+                "bbox_bottom_center": {
+                    "u": round(bbox_bottom_center_undist[0], 2) if bbox_bottom_center_undist is not None else None,
+                    "v": round(bbox_bottom_center_undist[1], 2) if bbox_bottom_center_undist is not None else None
                 }
             },
 
@@ -338,6 +427,7 @@ class CCTVPoseNode(Node):
             {k: v for k, v in item.items() if not k.startswith("_")}
             for item in output_list
         ]
+        clean_list = self._json_safe(clean_list)
 
         pose_msg = String()
         pose_msg.data = json.dumps(clean_list, ensure_ascii=False)
@@ -346,6 +436,19 @@ class CCTVPoseNode(Node):
         annotated_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         annotated_msg.header = msg.header
         self.annotated_pub.publish(annotated_msg)
+
+    def _json_safe(self, value):
+        if isinstance(value, dict):
+            return {str(k): self._json_safe(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._json_safe(v) for v in value]
+        if isinstance(value, tuple):
+            return [self._json_safe(v) for v in value]
+        if isinstance(value, (np.integer, np.int32, np.int64)):
+            return int(value)
+        if isinstance(value, (np.floating, np.float32, np.float64)):
+            return float(value)
+        return value
 
     def draw_result(self, frame, result, kpts, confs):
         left_shoulder = result["_left_shoulder_raw"]
@@ -375,7 +478,7 @@ class CCTVPoseNode(Node):
         cv2.circle(frame, sc_pt, 7, (255, 0, 255), -1)
 
         # 코
-        cv2.circle(frame, nose_pt, 6, (0, 220, 220), -1)
+        cv2.circle(frame, nose_pt, 6, (0, 0, 255), -1)
 
         txt_color = (0, 255, 0) if result["front_back"] == "FRONT" else (0, 165, 255)
 
