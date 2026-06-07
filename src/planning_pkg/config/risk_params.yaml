@@ -1,0 +1,15 @@
+path_risk_state_publisher:
+  ros__parameters:
+    
+    # Topics
+    tracked_objects_topic: "/perception/tracked_objects"
+    global_path_topic: "/plan"
+    path_risk_state_topic: "/planning/path_risk_state"
+
+    # Path Risk Parameters
+    lookahead_dist: 5.0             # 경로 탐색 범위 [m]
+    near_path_threshold: 1.5        # 경로 점유/위협 판정 [m]
+    block_duration_threshold: 5.0   # 경로 점유 지속 시간 임계값 [s]
+
+    # Publish Rate
+    publish_rate: 10.0              # [Hz]
