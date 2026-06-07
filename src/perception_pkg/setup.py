@@ -12,6 +12,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/resource', glob('resource/*.pt')),
+        ('share/' + package_name + '/config', glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -29,6 +30,7 @@ setup(
             'lidar_object_node = perception_pkg.lidar_object_node:main',
             'pixel_picker_node = perception_pkg.pixel_picker_node:main',
             'yolo_detector_node = perception_pkg.yolo_detector_node:main',
+            'person_direction_node = perception_pkg.person_direction_node:main',
         ],
     },
 )

@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
+find_package(perception_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
@@ -28,6 +29,7 @@ target_include_directories(${PROJECT_NAME}
 ament_target_dependencies(${PROJECT_NAME}
   geometry_msgs
   nav2_costmap_2d
+  perception_msgs
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -61,6 +63,7 @@ ament_export_libraries(${PROJECT_NAME})
 ament_export_dependencies(
   geometry_msgs
   nav2_costmap_2d
+  perception_msgs
   pluginlib
   rclcpp
   rclcpp_lifecycle

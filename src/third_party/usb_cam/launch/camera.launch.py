@@ -36,6 +36,10 @@ from pathlib import Path  # noqa: E402
 import sys
 import numpy as np
 import yaml
+
+if not hasattr(np, 'float'):
+    np.float = float
+
 from tf_transformations import quaternion_from_matrix
 
 # Hack to get relative import of .camera_config file working

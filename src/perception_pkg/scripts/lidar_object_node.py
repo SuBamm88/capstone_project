@@ -217,7 +217,10 @@ class LidarObjectNode(Node):
     # ── 3+4) DBSCAN 클러스터링 + 크기 필터 ───────────────────────────────────
     def _cluster(self, pts):
         xy = pts[:, :2]
-        labels = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit_predict(xy)
+        # n_jobs=-1: 이웃 탐색을 전체 코어로 병렬화 (기본은 단일 스레드라 CPU 병목).
+        labels = DBSCAN(
+            eps=self.eps, min_samples=self.min_samples, n_jobs=-1
+        ).fit_predict(xy)
         centroids = []
         for lbl in set(labels):
             if lbl == -1:  # 노이즈

@@ -22,8 +22,21 @@ def generate_launch_description():
             ),
             Node(
                 package="perception_pkg",
+                executable="cctv_pose_node",
+                name="cctv_pose_node",
+                output="screen",
+            ),
+            Node(
+                package="perception_pkg",
                 executable="cctv_to_map",
                 name="cctv_to_map",
+                output="screen",
+                parameters=[cctv_to_map_params],
+            ),
+            Node(
+                package="perception_pkg",
+                executable="person_direction_node",
+                name="person_direction_node",
                 output="screen",
                 parameters=[cctv_to_map_params],
             ),

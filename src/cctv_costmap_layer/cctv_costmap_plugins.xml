@@ -1,7 +1,7 @@
 <class_libraries>
   <library path="cctv_costmap_layer">
     <class type="cctv_costmap_layer::CctvLayer" base_class_type="nav2_costmap_2d::Layer">
-      <description>Marks CCTV-provided PoseArray objects as Nav2 costmap obstacles.</description>
+      <description>CCTV 추적 객체의 위치 + 예측 궤적을 위험 비용으로 칠하는 Nav2 레이어. class별 inflation 차등과 정적 맵 벽-인지 예측 자르기를 지원.</description>
     </class>
   </library>
 </class_libraries>

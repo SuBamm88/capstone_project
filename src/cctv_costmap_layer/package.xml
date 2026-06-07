@@ -11,6 +11,7 @@
 
   <depend>geometry_msgs</depend>
   <depend>nav2_costmap_2d</depend>
+  <depend>perception_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>

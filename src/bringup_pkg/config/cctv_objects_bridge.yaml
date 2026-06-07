@@ -1,0 +1,13 @@
+name: cctv_objects_bridge
+from_domain: 73
+to_domain: 10
+
+topics:
+  cctv/objects:
+    type: perception_msgs/msg/TrackedObjectArray
+    qos:
+      reliability: reliable
+  cctv_pose/person_direction_info:
+    type: std_msgs/msg/String
+    qos:
+      reliability: reliable

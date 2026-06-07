@@ -184,8 +184,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0
-      publish_frequency: 2.0
+      update_frequency: 10.0
+      publish_frequency: 5.0
       global_frame: odom
       robot_base_frame: base_link
       use_sim_time: False
@@ -193,12 +193,45 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.45
-      plugins: ["voxel_layer", "inflation_layer"]
+      robot_radius: 0.70
+      plugins: ["voxel_layer", "inflation_layer", "cctv_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.20
+        inflation_radius: 0.60  # 벽 전용, 얇게 (risk는 inflation 뒤 독립 레이어)
+      cctv_layer:
+        plugin: "cctv_costmap_layer::CctvLayer"
+        enabled: True
+        topic: /cctv/tracks          # tracker가 내보내는 안정 트랙(+예측 궤적)
+        base_radius: 0.25            # footprint 정보 없을 때 코어 반경 [m]
+        inflation_radius: 0.4        # 코어 밖 가우시안 후광 반경 [m]
+        cost_scaling_factor: 3.0     # 후광 감쇠 (클수록 빨리 감쇠)
+        prediction_decay: 0.6        # 예측 점 비용 감쇠 (먼 미래일수록 약화)
+        min_stability: 0.3           # 이 안정도 미만 트랙 무시
+        # ── 물방울(asymmetric Gaussian) 응시방향 비용 ──
+        # facing(비전 pose) 있는 사람의 정면 공간을 더 비워 사회적으로 우회시킴.
+        teardrop_enabled: True
+        sigma_front: 1.5             # 응시 전방 분산 σ [m] (앞으로 분명히 길게)
+        sigma_side: 0.35             # 좌우 분산 σ [m]
+        sigma_back: 0.25             # 후방 분산 σ [m] (짧게)
+        static_speed: 0.12           # [m/s] 이하 = 정지 → 물방울 100% (정지 시 Kalman 속도 노이즈 마진 포함)
+        moving_speed: 0.25           # [m/s] 이상 = 이동 → 예측궤적 100%
+        # tracker가 coast(COAST_TIME=2.0s) 동안 /cctv/tracks를 계속 republish하므로
+        # 정상 경로에선 이 값이 트리거되지 않는다. tracker 자체가 멈추는 최악의
+        # 경우에 대비한 안전망이며, coast보다 약간 길게 잡아 깜빡임을 막는다.
+        max_observation_age: 2.5
+        transform_tolerance: 0.2
+        # ── 예측궤적 벽 자르기 ──
+        block_behind_walls: True     # 예측이 정적 벽 너머면 그 점 제거
+        wall_cost_thresh: 253        # master 비용 ≥ 이 값이면 벽으로 간주(253=INSCRIBED)
+        # ── class별 inflation 차등 (미등록 class는 위 base/inflation/scale 사용) ──
+        class_names: ["person", "box"]
+        person.core_radius: 0.30
+        person.inflation_radius: 0.5   # 등방 후광 (물방울 방향성이 묻히지 않게 적당히)
+        person.cost_scaling_factor: 2.0
+        box.core_radius: 0.20
+        box.inflation_radius: 0.25     # 박스 좁게(물리 크기)
+        box.cost_scaling_factor: 3.0
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -227,15 +260,15 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 15.0
+      publish_frequency: 15.0
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: False
-      robot_radius: 0.45
+      robot_radius: 0.50
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "cctv_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer", "cctv_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -253,17 +286,42 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
-      cctv_layer:
-        plugin: "cctv_costmap_layer::CctvLayer"
-        enabled: True
-        topic: /cctv/objects_map
-        default_radius: 0.35
-        max_observation_age: 1.0
-        transform_tolerance: 0.2
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.40  # 벽 전용, 얇게 (risk는 inflation 뒤 독립 레이어)
+      cctv_layer:
+        plugin: "cctv_costmap_layer::CctvLayer"
+        enabled: True
+        topic: /cctv/tracks          # tracker가 내보내는 안정 트랙(+예측 궤적)
+        base_radius: 0.35            # footprint 정보 없을 때 코어 반경 [m]
+        inflation_radius: 0.4        # 코어 밖 가우시안 후광 반경 [m]
+        cost_scaling_factor: 3.0     # 후광 감쇠 (클수록 빨리 감쇠)
+        prediction_decay: 0.6        # 예측 점 비용 감쇠 (먼 미래일수록 약화)
+        min_stability: 0.3           # 이 안정도 미만 트랙 무시
+        # ── 물방울(asymmetric Gaussian) 응시방향 비용 ──
+        teardrop_enabled: True
+        sigma_front: 1.5             # 응시 전방 분산 σ [m] (앞으로 분명히 길게)
+        sigma_side: 0.35             # 좌우 분산 σ [m]
+        sigma_back: 0.25             # 후방 분산 σ [m] (짧게)
+        static_speed: 0.12           # [m/s] 이하 = 정지 → 물방울 100% (정지 시 Kalman 속도 노이즈 마진 포함)
+        moving_speed: 0.25           # [m/s] 이상 = 이동 → 예측궤적 100%
+        # tracker가 coast(COAST_TIME=2.0s) 동안 /cctv/tracks를 계속 republish하므로
+        # 정상 경로에선 이 값이 트리거되지 않는다. tracker 자체가 멈추는 최악의
+        # 경우에 대비한 안전망이며, coast보다 약간 길게 잡아 깜빡임을 막는다.
+        max_observation_age: 2.5
+        transform_tolerance: 0.2
+        # ── 예측궤적 벽 자르기 ──
+        block_behind_walls: True     # 예측이 정적 벽 너머면 그 점 제거
+        wall_cost_thresh: 253        # master 비용 ≥ 이 값이면 벽으로 간주(253=INSCRIBED)
+        # ── class별 inflation 차등 (미등록 class는 위 base/inflation/scale 사용) ──
+        class_names: ["person", "box"]
+        person.core_radius: 0.35
+        person.inflation_radius: 0.5   # 등방 후광 (물방울 방향성이 묻히지 않게 적당히)
+        person.cost_scaling_factor: 2.0
+        box.core_radius: 0.25
+        box.inflation_radius: 0.3      # 박스 좁게(물리 크기)
+        box.cost_scaling_factor: 3.0
       always_send_full_costmap: True
 
 map_server:

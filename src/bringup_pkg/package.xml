@@ -17,6 +17,7 @@
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>cctv_costmap_layer</exec_depend>
+  <exec_depend>domain_bridge</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""Convert left/right shoulder pixels to map direction vectors."""
+
+import json
+import math
+import os
+
+import cv2
+import numpy as np
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from geometry_msgs.msg import Point, PoseArray
+from rclpy.node import Node
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
+from std_msgs.msg import String
+from visualization_msgs.msg import Marker, MarkerArray
+import yaml
+
+
+class PersonDirectionNode(Node):
+    def __init__(self):
+        super().__init__("person_direction_node")
+
+        self.pose_topic = self.declare_parameter(
+            "pose_topic", "/cctv_pose/person_pose_info"
+        ).value
+        self.direction_topic = self.declare_parameter(
+            "direction_topic", "/cctv_pose/person_direction_info"
+        ).value
+        self.cctv_to_map_topic = self.declare_parameter(
+            "cctv_to_map_topic", "/cctv/objects_map"
+        ).value
+        self.map_frame = self.declare_parameter("map_frame", "map").value
+        self.direction_pixel_step = float(
+            self.declare_parameter("direction_pixel_step", 30.0).value
+        )
+        # 적응 평활: 방향 변화가 작으면(노이즈) alpha_min으로 무겁게,
+        # 크면(실제 방향전환) alpha_max로 빠르게 따라간다.
+        self.direction_alpha_min = float(
+            self.declare_parameter("direction_alpha_min", 0.35).value
+        )
+        self.direction_alpha_max = float(
+            self.declare_parameter("direction_alpha_max", 0.6).value
+        )
+        # 글리치(1프레임 튐) 거부: 변화량이 이 값보다 크면 '급변'으로 보고,
+        # confirm_frames 연속 지속될 때만 alpha_max로 따라간다(실제 전환).
+        # 1프레임만 튀면 alpha_reject로 거의 무시(hold)해 한 번 튀는 걸 막는다.
+        self.direction_turn_threshold = float(
+            self.declare_parameter("direction_turn_threshold", 0.05).value
+        )
+        self.direction_confirm_frames = int(
+            self.declare_parameter("direction_confirm_frames", 2).value
+        )
+        self.direction_alpha_reject = float(
+            self.declare_parameter("direction_alpha_reject", 0.1).value
+        )
+        # 0.0 = 어깨선 pose 방향만 사용(권장). >0이면 측면 포즈에 프레임차분
+        # 이동방향을 섞는데, 정지/미세움직임에선 노이즈라 화살표가 흔들린다.
+        self.side_motion_weight = float(
+            self.declare_parameter("side_motion_weight", 0.0).value
+        )
+        self.min_motion_distance = float(
+            self.declare_parameter("min_motion_distance", 0.08).value
+        )
+        # 얼굴(코) 방향 보정: 코의 좌우 오프셋만큼 화살표를 머리가 향한 쪽으로 기울임.
+        self.use_face_yaw = bool(
+            self.declare_parameter("use_face_yaw", True).value
+        )
+        self.face_yaw_gain = float(
+            self.declare_parameter("face_yaw_gain", 2.0).value
+        )
+        # 어깨폭/키(bbox 높이) 비율이 이 값 이상이면 '정면'으로 보고 어깨축을 100% 신뢰.
+        # 측면이 되면 어깨폭이 줄어 비율이 작아진다(키는 불변). 클수록 측면 판정에 민감.
+        self.frontal_shoulder_ratio = float(
+            self.declare_parameter("frontal_shoulder_ratio", 0.45).value
+        )
+        # 깊이축(카메라 쪽) 감쇠 지수. 1.0=선형, 2.0=제곱(측면에서 카메라 성분이 더
+        # 빨리 죽음). 클수록 정면이 아닌 한 카메라를 덜 본다.
+        self.depth_falloff_power = float(
+            self.declare_parameter("depth_falloff_power", 2.0).value
+        )
+
+        double_array = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY)
+        image_points = self.declare_parameter(
+            "image_points", [], double_array
+        ).value
+        map_points = self.declare_parameter(
+            "map_points", [], double_array
+        ).value
+
+        if len(image_points) < 8 or len(map_points) < 8:
+            try:
+                package_share = get_package_share_directory("perception_pkg")
+                config_path = os.path.join(package_share, "config", "cctv_to_map.yaml")
+                with open(config_path, "r") as f:
+                    cfg = yaml.safe_load(f)
+                params = cfg.get("cctv_to_map", {}).get("ros__parameters", {})
+                image_points = params.get("image_points", image_points)
+                map_points = params.get("map_points", map_points)
+                self.cctv_to_map_topic = params.get(
+                    "objects_topic", self.cctv_to_map_topic
+                )
+                self.get_logger().info(f"Loaded homography params from {config_path}")
+            except Exception as exc:
+                self.get_logger().warn(
+                    f"Fallback homography config load failed: {exc}"
+                )
+
+        self.image_points = self._pairs(image_points, "image_points")
+        self.map_points = self._pairs(map_points, "map_points")
+        if len(self.image_points) != len(self.map_points):
+            raise ValueError("image_points and map_points must have the same length")
+
+        self.h_cam_to_map, _ = cv2.findHomography(
+            self.image_points,
+            self.map_points,
+            method=cv2.RANSAC,
+            ransacReprojThreshold=0.05,
+        )
+        if self.h_cam_to_map is None:
+            raise RuntimeError("Failed to compute camera-to-map homography")
+
+        self.direction_state = {}
+        self.position_state = {}
+        self._turn_count = {}  # 트랙별 '급변 연속 프레임 수' (글리치 거부용)
+        self.last_cctv_map_points = []
+        self.cctv_to_map_sub = self.create_subscription(
+            PoseArray,
+            self.cctv_to_map_topic,
+            self.cctv_to_map_callback,
+            10,
+        )
+
+        self.pose_sub = self.create_subscription(
+            String,
+            self.pose_topic,
+            self.pose_callback,
+            10,
+        )
+        self.direction_pub = self.create_publisher(String, self.direction_topic, 10)
+        self.marker_pub = self.create_publisher(MarkerArray, "/cctv_pose/person_direction_markers", 10)
+
+        self.get_logger().info(
+            f"person_direction_node started: {self.pose_topic} -> {self.direction_topic}"
+        )
+        self.get_logger().info(f"H_cam_to_map:\n{self.h_cam_to_map}")
+
+    def pose_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().warn(f"Invalid JSON on {self.pose_topic}: {exc}")
+            return
+
+        if not isinstance(payload, list):
+            self.get_logger().warn("person_pose_info payload must be a JSON list")
+            return
+
+        output = []
+        for idx, item in enumerate(payload):
+            if not isinstance(item, dict):
+                continue
+
+            person_id = item.get("person_id")
+            front_back = item.get("front_back", "FRONT")
+            pixels = item.get("raw_pixel") or item.get("undistorted_pixel") or {}
+
+            left = pixels.get("left_shoulder")
+            right = pixels.get("right_shoulder")
+            bottom_center = pixels.get("bbox_bottom_center")
+            if bottom_center is None or bottom_center.get("u") is None or bottom_center.get("v") is None:
+                bottom_center = pixels.get("shoulder_center")
+
+            if not left or not right or not bottom_center:
+                continue
+
+            try:
+                lu = float(left["u"])
+                lv = float(left["v"])
+                ru = float(right["u"])
+                rv = float(right["v"])
+                bu = float(bottom_center["u"])
+                bv = float(bottom_center["v"])
+            except (TypeError, ValueError, KeyError):
+                continue
+
+            # 코(얼굴) 픽셀 + 신뢰도: 좌우 yaw 보정에 사용. 후면이면 코가 약해 건너뜀.
+            nose_kp = pixels.get("nose")
+            kp_conf = item.get("keypoint_confidence") or {}
+            try:
+                nose_conf = float(kp_conf.get("nose", 0.0))
+            except (TypeError, ValueError):
+                nose_conf = 0.0
+            nu = nv = None
+            if nose_kp and nose_kp.get("u") is not None and nose_kp.get("v") is not None:
+                try:
+                    nu = float(nose_kp["u"])
+                    nv = float(nose_kp["v"])
+                except (TypeError, ValueError):
+                    nu = nv = None
+
+            base_x, base_y = self._pixel_to_map(bu, bv)
+            closest = self._find_closest_map_point(bu, bv)
+            if closest is not None:
+                bx, by = closest
+            else:
+                bx, by = base_x, base_y
+
+            # YOLO left/right shoulders are anatomical, so their image order can
+            # swap when the person turns. Use image left-to-right only for the
+            # shoulder-line direction, then let front_back choose the sign.
+            if lu <= ru:
+                img_left_u, img_left_v = lu, lv
+                img_right_u, img_right_v = ru, rv
+            else:
+                img_left_u, img_left_v = ru, rv
+                img_right_u, img_right_v = lu, lv
+
+            shoulder_u = img_right_u - img_left_u
+            shoulder_v = img_right_v - img_left_v
+            shoulder_len = math.hypot(shoulder_u, shoulder_v)
+            if shoulder_len <= 1e-6:
+                continue
+
+            # ── 방향 융합: 어깨선(정면에 강함) + 얼굴 yaw(측면에 강함)를 신뢰도 가중 ──
+            # 정규화 기준은 측면에서 0으로 수렴하는 shoulder_len 대신 안정적인 bbox 폭.
+            bbox = pixels.get("bbox")
+            bbox_w = bbox_h = None
+            if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+                try:
+                    bbox_w = abs(float(bbox[2]) - float(bbox[0]))
+                    bbox_h = abs(float(bbox[3]) - float(bbox[1]))
+                except (TypeError, ValueError):
+                    bbox_w = bbox_h = None
+            if not bbox_w or bbox_w < 1e-3:
+                bbox_w = max(shoulder_len * 2.0, 1.0)  # bbox 없으면 어깨폭으로 대체
+            if not bbox_h or bbox_h < 1e-3:
+                bbox_h = max(shoulder_len * 4.0, 1.0)
+
+            # 어깨선 수직 = 몸통 깊이축. 부호는 front/back. FRONT_SIDE는 정면이라 안 뒤집음.
+            dir_u = -shoulder_v / shoulder_len
+            dir_v = shoulder_u / shoulder_len
+            if front_back in ("BACK", "BACK_SIDE"):
+                dir_u = -dir_u
+                dir_v = -dir_v
+
+            # frontalness: 어깨폭 / '키(bbox 높이)'. 키는 방향전환에 거의 불변이라
+            # 측면이 되면 어깨폭만 줄어 frontalness가 제대로 떨어진다. (폭으로 정규화하면
+            # 폭도 같이 줄어 frontalness가 안 떨어져 계속 카메라를 본다 — 그 버그 수정.)
+            frontalness = shoulder_len / (self.frontal_shoulder_ratio * bbox_h)
+            frontalness = max(0.0, min(1.0, frontalness))
+
+            # 얼굴 yaw: 코의 수평 오프셋을 bbox 폭으로 정규화(안정적). 측면일수록 주력.
+            yaw_t = 0.0
+            if self.use_face_yaw and nu is not None and nose_conf >= 0.35:
+                center_u = (img_left_u + img_right_u) / 2.0
+                yaw_t = (nu - center_u) / bbox_w
+                yaw_t = max(-0.6, min(0.6, yaw_t))
+
+            # 융합: 정면이면 어깨 깊이축이, 측면이면 얼굴 수평 yaw가 지배한다.
+            # 깊이축 가중을 frontalness^power로 줘 측면에서 카메라 성분을 더 빨리 죽인다.
+            w_depth = frontalness ** self.depth_falloff_power
+            fu = w_depth * dir_u + self.face_yaw_gain * yaw_t
+            fv = w_depth * dir_v
+            flen = math.hypot(fu, fv)
+            if flen > 1e-3:
+                dir_u, dir_v = fu / flen, fv / flen
+            # else: 단서 부족(후면 측면 등) → 어깨선 수직 그대로 사용
+
+            probe_x, probe_y = self._pixel_to_map(
+                bu + dir_u * self.direction_pixel_step,
+                bv + dir_v * self.direction_pixel_step,
+            )
+            nx = probe_x - base_x
+            ny = probe_y - base_y
+
+            map_dir_len = math.hypot(nx, ny)
+            if map_dir_len > 1e-6:
+                nx /= map_dir_len
+                ny /= map_dir_len
+            else:
+                continue
+
+            nx, ny = self._blend_motion_direction(person_id, front_back, nx, ny, bx, by)
+            nx, ny = self._smooth_direction(person_id, nx, ny)
+
+            output.append({
+                "person_id": person_id,
+                "front_back": front_back,
+                "bottom_center_map": {"x": round(bx, 4), "y": round(by, 4)},
+                "direction": {"x": round(nx, 6), "y": round(ny, 6), "z": 0.0},
+            })
+
+        if output:
+            out_msg = String()
+            out_msg.data = json.dumps(output, ensure_ascii=False)
+            self.direction_pub.publish(out_msg)
+            self._publish_direction_markers(output)
+
+    def cctv_to_map_callback(self, msg):
+        self.last_cctv_map_points = [
+            (float(pose.position.x), float(pose.position.y)) for pose in msg.poses
+        ]
+
+    def _find_closest_map_point(self, u, v):
+        if not self.last_cctv_map_points:
+            return None
+        predicted = self._pixel_to_map(u, v)
+        best = None
+        best_dist = float("inf")
+        for px, py in self.last_cctv_map_points:
+            dx = predicted[0] - px
+            dy = predicted[1] - py
+            dist = dx * dx + dy * dy
+            if dist < best_dist:
+                best_dist = dist
+                best = (px, py)
+        if best is None:
+            return None
+        if best_dist > 4.0:  # fallback if map match is too far from predicted bottom center
+            return None
+        return best
+
+    def _pixel_to_map(self, u, v):
+        pt = np.array([[[u, v]]], dtype=np.float32)
+        mapped = cv2.perspectiveTransform(pt, self.h_cam_to_map)
+        return float(mapped[0, 0, 0]), float(mapped[0, 0, 1])
+
+    def _smooth_direction(self, person_id, nx, ny):
+        key = person_id if person_id is not None else "__unknown__"
+        prev = self.direction_state.get(key)
+        if prev is None:
+            self.direction_state[key] = (nx, ny)
+            self._turn_count[key] = 0
+            return nx, ny
+
+        px, py = prev
+
+        # 변화량 = 이전 평활값과의 각도차(내적). 작으면 노이즈/완만, 크면 급변.
+        dot = max(-1.0, min(1.0, px * nx + py * ny))
+        change = (1.0 - dot) / 2.0  # 0(동일) ~ 1(정반대)
+
+        if change <= self.direction_turn_threshold:
+            # 작은 변화: 일반 평활. 급변 연속 카운터 리셋.
+            self._turn_count[key] = 0
+            alpha = self.direction_alpha_min
+        else:
+            # 큰 변화: 1프레임 글리치인지 지속되는 실제 전환인지 연속성으로 판별.
+            cnt = self._turn_count.get(key, 0) + 1
+            self._turn_count[key] = cnt
+            if cnt >= self.direction_confirm_frames:
+                alpha = self.direction_alpha_max     # 지속 → 실제 전환, 빠르게 따라감
+            else:
+                alpha = self.direction_alpha_reject  # 1프레임 → 글리치 의심, 거의 유지
+
+        sx = (1.0 - alpha) * px + alpha * nx
+        sy = (1.0 - alpha) * py + alpha * ny
+        length = math.hypot(sx, sy)
+        if length <= 1e-6:
+            return px, py
+
+        sx /= length
+        sy /= length
+        self.direction_state[key] = (sx, sy)
+        return sx, sy
+
+    def _blend_motion_direction(self, person_id, front_back, nx, ny, bx, by):
+        key = person_id if person_id is not None else "__unknown__"
+        prev = self.position_state.get(key)
+        self.position_state[key] = (bx, by)
+
+        if front_back not in ("FRONT_SIDE", "BACK_SIDE"):
+            return nx, ny
+        if prev is None:
+            return nx, ny
+
+        px, py = prev
+        mx = bx - px
+        my = by - py
+        motion_len = math.hypot(mx, my)
+        if motion_len < max(0.0, self.min_motion_distance):
+            return nx, ny
+
+        mx /= motion_len
+        my /= motion_len
+        motion_weight = max(0.0, min(1.0, self.side_motion_weight))
+        pose_weight = 1.0 - motion_weight
+
+        bx_dir = pose_weight * nx + motion_weight * mx
+        by_dir = pose_weight * ny + motion_weight * my
+        blend_len = math.hypot(bx_dir, by_dir)
+        if blend_len <= 1e-6:
+            return nx, ny
+
+        return bx_dir / blend_len, by_dir / blend_len
+
+    def _publish_direction_markers(self, output):
+        marker_array = MarkerArray()
+        delete_marker = Marker()
+        delete_marker.header.frame_id = self.map_frame
+        delete_marker.header.stamp = self.get_clock().now().to_msg()
+        delete_marker.action = Marker.DELETEALL
+        marker_array.markers.append(delete_marker)
+
+        for idx, item in enumerate(output):
+            bottom = item["bottom_center_map"]
+            dx = float(item["direction"]["x"])
+            dy = float(item["direction"]["y"])
+            center_x = bottom["x"]
+            center_y = bottom["y"]
+            # make arrows longer and lifted slightly above the map for visibility
+            length = 1.0
+            arrow_z = 0.08
+
+            # color by front/back for clearer semantics
+            fb = item.get("front_back", "FRONT")
+            if fb == "FRONT":
+                r, g, b = 0.0, 1.0, 0.0
+            elif fb == "FRONT_SIDE":
+                r, g, b = 0.0, 0.8, 1.0
+            elif fb == "BACK":
+                r, g, b = 1.0, 0.0, 0.0
+            else:
+                r, g, b = 1.0, 0.5, 0.0
+
+            marker = Marker()
+            marker.header.frame_id = self.map_frame
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "person_direction"
+            marker.id = idx
+            marker.type = Marker.ARROW
+            marker.action = Marker.ADD
+            # scale.x: shaft diameter, scale.y: head diameter, scale.z: head length
+            marker.scale.x = 0.2
+            marker.scale.y = 0.5
+            marker.scale.z = 0.6
+            marker.color.r = r
+            marker.color.g = g
+            marker.color.b = b
+            marker.color.a = 1.0
+            marker.pose.orientation.w = 1.0
+            marker.points = [
+                Point(x=center_x, y=center_y, z=arrow_z),
+                Point(x=center_x + dx * length, y=center_y + dy * length, z=arrow_z),
+            ]
+            marker_array.markers.append(marker)
+
+            base_marker = Marker()
+            base_marker.header.frame_id = self.map_frame
+            base_marker.header.stamp = self.get_clock().now().to_msg()
+            base_marker.ns = "person_direction_base"
+            base_marker.id = idx
+            base_marker.type = Marker.SPHERE
+            base_marker.action = Marker.ADD
+            base_marker.scale.x = 0.20
+            base_marker.scale.y = 0.20
+            base_marker.scale.z = 0.06
+            base_marker.color.r = 1.0
+            base_marker.color.g = 1.0
+            base_marker.color.b = 0.0
+            base_marker.color.a = 1.0
+            base_marker.pose.position = Point(x=center_x, y=center_y, z=arrow_z)
+            base_marker.pose.orientation.w = 1.0
+            marker_array.markers.append(base_marker)
+
+        self.marker_pub.publish(marker_array)
+
+    def _pairs(self, values, name):
+        if len(values) % 2 != 0 or len(values) < 8:
+            raise ValueError(f"{name} must contain at least four x/y pairs")
+        return np.array(values, dtype=np.float32).reshape((-1, 2))
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = PersonDirectionNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

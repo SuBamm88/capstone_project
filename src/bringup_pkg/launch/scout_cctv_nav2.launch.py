@@ -16,7 +16,7 @@ def generate_launch_description():
 
     nav2_launch        = os.path.join(nav2_share,     'launch', 'bringup_launch.py')
     default_params     = os.path.join(bringup_share,  'config', 'nav2_params_cctv.yaml')
-    default_map        = os.path.join(bringup_share,  'maps',   'scout_mini_map_3.yaml')
+    default_map        = os.path.join(bringup_share,  'maps',   'map.yaml')
     bt_xml             = os.path.join(planning_share,  'behavior_trees', 'navigate_cctv_risk.xml')
     risk_params        = os.path.join(planning_share,  'config', 'risk_params.yaml')
 

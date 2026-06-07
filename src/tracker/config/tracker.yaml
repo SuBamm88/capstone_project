@@ -1,0 +1,55 @@
+# tracker_node 튜닝 파라미터.
+# 코드 재빌드 없이 이 파일만 고쳐 추적 성능을 조정한다(ament_python symlink-install
+# 이면 저장 즉시 반영). 값을 비우면 코드의 기본값(kalman_track.py/hungarian.py
+# 전역 상수)이 fallback으로 쓰인다.
+tracker_node:
+  ros__parameters:
+    # ── 토픽/프레임 ──
+    input_topic: "/cctv/objects"            # 입력: cctv_to_map의 검출(map frame)
+    tracks_topic: "/cctv/tracks"            # 출력: 안정 트랙(+예측+facing)
+    markers_topic: "/tracker/markers"       # 출력: RViz 디버그 마커
+    direction_topic: "/cctv_pose/person_direction_info"  # 응시방향(facing) 입력
+    map_frame: "map"
+
+    # ── facing(물방울) 매칭 ──
+    facing_match_dist: 1.0    # [m] 응시방향을 트랙에 붙일 최근접 허용 거리
+    # facing_max_age는 응시방향 발행 주기보다 길어야 한다. CPU pose 추론은
+    # ~1Hz(주기 ~1.1s)라 0.5s면 매 프레임 만료돼 has_facing이 안 붙는다.
+    # rosbag 검증 결과 1.5s에서 정상 매칭(아래 검증 기록). GPU로 pose가 빨라지면
+    # 다시 낮춰도 된다.
+    facing_max_age: 1.5       # [s] 이보다 오래된 응시방향은 무시
+
+    # ── coast(미검출 유지) ──
+    coast_period: 0.1         # [s] 입력 끊겨도 이 주기로 predict+republish (0=비활성)
+    coast_time: 2.0           # [s] 미검출 상태로 트랙을 유지하는 최대 시간
+                              #     ↑ 가림/깜빡임에 강해지나, 너무 크면 사라진 사람이 오래 남음
+
+    # ── 입력 timestamp 방어 ──
+    dt_min: 0.001              # [s] 0/중복 stamp에서 Kalman dt 하한
+    dt_max: 0.5                # [s] 긴 입력 공백/지연에서 예측 폭주 방지
+    time_jump_reset_threshold: 0.1  # [s] bag loop 등 시간 역행 시 트랙 리셋
+
+    # ── 트랙 라이프사이클 ──
+    hits_to_confirm: 3        # 연속 검출 N프레임이면 confirmed(=화면/costmap에 등장)
+                              #     ↑ 가짜 트랙(잠깐 갈라진 bbox) 억제, 단 진짜 새 사람은 늦게 뜸
+    max_miss: 5              # 연속 미검출 N프레임이면 삭제(콜백 기준 보조 한도)
+
+    # ── 연관(association) gate ── ★빠른 움직임 fragmentation의 주 조절값
+    gate_mahal_sq: 35.0       # Mahalanobis² 게이트(≈3.5σ). 예측-검출 거리가 이보다 크면
+                              #     같은 사람으로 안 봄 → 새 트랙 생성(=분리).
+                              #     ↑ 올리면(예 49) 빠른 사람도 같은 트랙 유지, 단 여러 명일 때
+                              #       옆 사람과 오매칭(ID swap) 위험↑
+
+    # ── Kalman 프로세스 노이즈 ── ★빠른 움직임 추종의 근본값
+    q_pos: 0.01               # 위치 프로세스 노이즈(작을수록 부드럽지만 둔함)
+    q_vel: 0.15               # 속도 프로세스 노이즈. ↑ 올리면(예 0.3~0.5) 급가속/급방향전환
+                              #     추종↑(예측이 검출 따라가 gate 통과↑), 단 트랙이 더 흔들림
+
+    # ── 정지/이동 분류 히스테리시스 ── (RiskLayer static/moving_speed와 정렬 권장)
+    static_enter: 0.12        # [m/s] 이 속도 미만 → 정지 판정 (예측궤적 한 점에 묶임)
+    static_exit: 0.25         # [m/s] 이 속도 초과 → 이동 판정 (예측궤적 뻗기 시작)
+    heading_min_speed: 0.15   # [m/s] 이 이상일 때만 motion heading 갱신
+
+    # ── 예측 궤적 ──
+    predict_horizon: 5.0      # [s] 미래 예측 시간
+    predict_steps: 60         # 궤적 점 개수(많을수록 촘촘 = costmap 띠가 끊김 적음)

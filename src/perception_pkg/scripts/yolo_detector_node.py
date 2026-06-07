@@ -55,11 +55,18 @@ class YoloDetectorNode(Node):
         self.bridge = CvBridge()
         self.model = YOLO(MODEL_PATH)
 
+        # CPU 병목 완화: 카메라가 30fps여도 target_fps로만 추론하고 나머지 프레임은
+        # 버린다(항상 최신 프레임만 처리하므로 지연은 늘지 않음).
+        self.target_fps = 15.0
+        self.imgsz = 416
+        self.latest_image_msg = None
+        self.has_new_frame = False
+
         self.image_sub = self.create_subscription(
             Image,
             '/camera2/image_raw',
             self.image_callback,
-            10
+            1
         )
 
         self.annotated_pub = self.create_publisher(
@@ -80,15 +87,23 @@ class YoloDetectorNode(Node):
             10
         )
 
-        self.get_logger().info('YOLO detector node started.')
+        timer_period = 1.0 / max(0.1, self.target_fps)
+        self.processing_timer = self.create_timer(
+            timer_period, self.process_latest_frame
+        )
+
+        self.get_logger().info(
+            f'YOLO detector node started: target_fps={self.target_fps}, '
+            f'imgsz={self.imgsz}'
+        )
 
     def get_anchor_point(self, name, x1, y1, x2, y2):
         center_x = float((x1 + x2) / 2.0)
         center_y = float((y1 + y2) / 2.0)
         height = float(y2 - y1)
 
-        if name == 'person':
-            # 사람: bbox 하단 중앙보다 살짝 위쪽의 보정된 발점
+        if name in ('person', 'robot'):
+            # 사람/로봇: bbox 하단 중앙 부근의 보정된 점
             k_person = 0.90
             anchor_u = center_x
             anchor_v = float(y1 + k_person * height)
@@ -109,14 +124,14 @@ class YoloDetectorNode(Node):
         return anchor_u, anchor_v, anchor_type
 
     def get_marker_color(self, name):
-        if name == 'person':
+        if name in ('person', 'robot'):
             return ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
         if name == 'box':
             return ColorRGBA(r=0.0, g=0.0, b=1.0, a=1.0)
         return ColorRGBA(r=1.0, g=1.0, b=0.0, a=1.0)
 
     def get_cv_color(self, name):
-        if name == 'person':
+        if name in ('person', 'robot'):
             return (0, 0, 255)
         if name == 'box':
             return (255, 0, 0)
@@ -126,9 +141,20 @@ class YoloDetectorNode(Node):
         return Point(x=float(x), y=float(y), z=float(z))
 
     def image_callback(self, msg):
+        # 가벼운 콜백: 최신 프레임만 보관하고 즉시 반환. 무거운 디코드/추론은
+        # 타이머(process_latest_frame)가 target_fps로만 수행한다.
+        self.latest_image_msg = msg
+        self.has_new_frame = True
+
+    def process_latest_frame(self):
+        if self.latest_image_msg is None or not self.has_new_frame:
+            return
+        msg = self.latest_image_msg
+        self.has_new_frame = False
+
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
-        results = self.model(frame, conf=0.5, verbose=False)
+        results = self.model(frame, conf=0.5, imgsz=self.imgsz, verbose=False)
 
         detection_array_msg = Detection2DArray()
         detection_array_msg.header = msg.header
