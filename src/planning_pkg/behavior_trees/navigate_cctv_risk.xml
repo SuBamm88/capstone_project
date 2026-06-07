@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<!--
+  navigate_cctv_risk.xml
+  Mode 2 (Proposed): CCTV + BT 기반 리스크 인식 주행 BT
+
+  브랜치 구조 요약
+  ─────────────────────────────────────────────────────────────────────────
+  NavigateWithRiskRecovery (RecoveryNode, retries=6)
+  │
+  ├── MainNavigation (ReactiveFallback)  ← 매 틱마다 IsDynamicPathOccupied 우선 평가
+  │   │
+  │   ├── DynamicPathOccupied (ReactiveSequence)  [높은 우선순위]
+  │   │   │  IsDynamicPathOccupied = TRUE 인 동안 이 브랜치가 활성화됨
+  │   │   │  → replan 없이 기존 경로 유지, SpeedPlanner가 감속/정지 담당
+  │   │   │  → IsDynamicPathOccupied = FALSE(위협 없거나 타임아웃) 가 되면
+  │   │   │    NormalNavigation으로 fall-through → ComputePathToPose 재실행
+  │   │   ├── IsDynamicPathOccupied          (PathRiskStatePublisher 발행값)
+  │   │   └── FollowPath                     (기존 {path} 그대로 사용)
+  │   │
+  │   └── NormalNavigation (PipelineSequence)  [낮은 우선순위, 기본 주행]
+  │       │  1Hz 주기로 ComputePathToPose 실행 → cctv_layer가 정적/장기 장애물 반영
+  │       ├── RateController(hz=1.0)
+  │       │   └── ComputePathToPose           → {path} 갱신
+  │       └── FollowPath                      → {path} 추종
+  │
+  └── RecoveryFallback (ReactiveFallback)
+      ├── GoalUpdated                          ← 목표 변경 시 즉시 재시작
+      └── RecoveryActions (RoundRobin)
+          ├── ClearLocalCostmap
+          ├── ClearGlobalCostmap
+          ├── Spin(1.57 rad)
+          ├── Wait(5 s)
+          └── BackUp(0.30 m)
+
+  핵심 설계 원칙
+  ─────────────────────────────────────────────────────────────────────────
+  - 정적 장애물 처리: cctv_layer(global_costmap) + NormalNavigation 1Hz replan
+  - 단기 동적 장애물: IsDynamicPathOccupied=TRUE → replan 억제, SpeedPlanner 감속
+  - 장기 점유(block_duration_threshold 초 초과): IsDynamicPathOccupied=FALSE →
+    NormalNavigation 재활성 → costmap 기반 우회 경로 생성
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateWithRiskRecovery">
+
+      <!-- ── 메인 주행 ──────────────────────────────────────────────────── -->
+      <ReactiveFallback name="MainNavigation">
+
+        <!-- 동적 객체 단기 점유: replan 억제, SpeedPlanner 감속 -->
+        <ReactiveSequence name="DynamicPathOccupied">
+          <IsDynamicPathOccupied/>
+          <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="goal_checker"/>
+        </ReactiveSequence>
+
+        <!-- 일반 주행: 1Hz replan + 경로 추종 -->
+        <PipelineSequence name="NormalNavigation">
+          <RateController hz="1.0">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"
+                               error_code_id="{compute_path_error_code}"/>
+          </RateController>
+          <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="goal_checker"
+                      error_code_id="{follow_path_error_code}"/>
+        </PipelineSequence>
+
+      </ReactiveFallback>
+
+      <!-- ── 복구 ──────────────────────────────────────────────────────── -->
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearCostmaps">
+            <ClearEntireCostmap name="ClearLocalCostmap"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap"
+              service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+          <Wait wait_duration="5.0"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"
+                  error_code_id="{backup_error_code}"/>
+        </RoundRobin>
+      </ReactiveFallback>
+
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

@@ -19,7 +19,6 @@ capstone_project/
 ├── docs/
 │   └── collaboration.md
 ├── src/
-│   └── README.md
 ├── .dockerignore
 ├── .gitignore
 ├── docker-compose.yml
